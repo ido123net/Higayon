@@ -1,0 +1,13 @@
+const menu = document.querySelector(".site-menu");
+if (menu) {
+  document.addEventListener("click", event => {
+    if (!menu.contains(event.target)) menu.open = false;
+  });
+  document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && menu.open) {
+      event.preventDefault();
+      menu.open = false;
+      menu.querySelector("summary").focus({preventScroll: true});
+    }
+  });
+}

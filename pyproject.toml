@@ -1,0 +1,33 @@
+[project]
+name = "higayon"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "dj-database-url>=3",
+    "django>=5.2,<5.3",
+    "django-allauth[socialaccount]>=65",
+    "gunicorn>=23",
+    "psycopg[binary]>=3.2",
+    "whitenoise>=6",
+]
+
+[dependency-groups]
+dev = [
+    "playwright>=1.65.2",
+    "pre-commit>=4.7.0",
+    "ruff>=0.17.5",
+    "ty>=0.0.104",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
+
+[tool.ty.src]
+exclude = ["puzzles/migrations/"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/browser_smoke.py" = ["E402"] # Django must initialize before model imports.

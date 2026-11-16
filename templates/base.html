@@ -1,0 +1,30 @@
+{% load static %}
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+  <title>higayon · תשבצי היגיון</title>
+  <link rel="stylesheet" href="{% static 'app.css' %}">
+</head>
+<body>
+  <header>
+    <a class="brand" href="/">higayon</a>
+    <span>תשבצי היגיון</span>
+    {% if user.is_authenticated %}
+      <details class="site-menu">
+        <summary><span aria-hidden="true">☰</span><span>תפריט</span></summary>
+        <nav class="menu-panel" aria-label="תפריט האתר">
+          {% block menu_content %}<a href="/">לפתרון התשבץ</a>{% endblock %}
+          <form method="post" action="/accounts/logout/">
+            {% csrf_token %}
+            <button>יציאה</button>
+          </form>
+        </nav>
+      </details>
+    {% endif %}
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  {% if user.is_authenticated %}<script type="module" src="{% static 'menu.js' %}"></script>{% endif %}
+</body>
+</html>

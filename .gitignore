@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+db.sqlite3
+staticfiles/
+.ruff_cache/
+.terraform/
+*.tfstate*
+*.tfplan
+*.tfvars
+!example.tfvars
+playwright-report/

@@ -1,0 +1,102 @@
+# Replace image, namespace, host, ingress class, TLS and resources before applying.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: higayon
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: higayon
+  namespace: higayon
+data:
+  DEBUG: "false"
+  TRUST_PROXY: "true"
+  ALLOWED_HOSTS: crossword.example.com
+  CSRF_TRUSTED_ORIGINS: https://crossword.example.com
+  OWNER_EMAIL: owner@example.com
+  ALLOWED_EMAILS: owner@example.com,friend@example.com
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: higayon-migrate-v1
+  namespace: higayon
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: ghcr.io/your-org/higayon:replace
+          command: ["python", "manage.py", "migrate", "--noinput"]
+          envFrom:
+            - configMapRef: {name: higayon}
+            - secretRef: {name: higayon-runtime}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: higayon
+  namespace: higayon
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: higayon}
+  template:
+    metadata:
+      labels: {app: higayon}
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/your-org/higayon:replace
+          ports: [{containerPort: 8000}]
+          envFrom:
+            - configMapRef: {name: higayon}
+            - secretRef: {name: higayon-runtime}
+          readinessProbe:
+            httpGet: {path: /health/ready/, port: 8000, httpHeaders: [{name: X-Forwarded-Proto, value: https}, {name: Host, value: crossword.example.com}]}
+          livenessProbe:
+            httpGet: {path: /health/live/, port: 8000, httpHeaders: [{name: X-Forwarded-Proto, value: https}, {name: Host, value: crossword.example.com}]}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities: {drop: [ALL]}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: higayon
+  namespace: higayon
+spec:
+  selector: {app: higayon}
+  ports: [{port: 80, targetPort: 8000}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: higayon
+  namespace: higayon
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [crossword.example.com]
+      secretName: higayon-tls
+  rules:
+    - host: crossword.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: higayon
+                port: {number: 80}

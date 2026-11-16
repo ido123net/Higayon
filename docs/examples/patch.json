@@ -1,0 +1,197 @@
+{
+  "title": "דוגמה מעודכנת",
+  "clues": [
+    {
+      "direction": "across",
+      "number": 1,
+      "text": "הגדרה לדוגמה בלבד, מספר 1",
+      "enumeration": [
+        7
+      ]
+    },
+    {
+      "direction": "across",
+      "number": 5,
+      "text": "הגדרה לדוגמה בלבד, מספר 5",
+      "enumeration": [
+        3
+      ]
+    },
+    {
+      "direction": "across",
+      "number": 7,
+      "text": "הגדרה לדוגמה בלבד, מספר 7",
+      "enumeration": [
+        5
+      ]
+    },
+    {
+      "direction": "across",
+      "number": 8,
+      "text": "הגדרה לדוגמה בלבד, מספר 8",
+      "enumeration": [
+        5
+      ]
+    },
+    {
+      "direction": "across",
+      "number": 9,
+      "text": "הגדרה לדוגמה בלבד, מספר 9",
+      "enumeration": [
+        4
+      ]
+    },
+    {
+      "direction": "across",
+      "number": 10,
+      "text": "הגדרה לדוגמה בלבד, מספר 10",
+      "enumeration": [
+        6
+      ]
+    },
+    {
+      "direction": "across",
+      "number": 12,
+      "text": "הגדרה לדוגמה בלבד, מספר 12",
+      "enumeration": [
+        6
+      ]
+    },
+    {
+      "direction": "across",
+      "number": 14,
+      "text": "הגדרה לדוגמה בלבד, מספר 14",
+      "enumeration": [
+        4
+      ]
+    },
+    {
+      "direction": "across",
+      "number": 17,
+      "text": "הגדרה לדוגמה בלבד, מספר 17",
+      "enumeration": [
+        5
+      ]
+    },
+    {
+      "direction": "across",
+      "number": 19,
+      "text": "הגדרה לדוגמה בלבד, מספר 19",
+      "enumeration": [
+        5
+      ]
+    },
+    {
+      "direction": "across",
+      "number": 20,
+      "text": "הגדרה לדוגמה בלבד, מספר 20",
+      "enumeration": [
+        3
+      ]
+    },
+    {
+      "direction": "across",
+      "number": 21,
+      "text": "הגדרה לדוגמה בלבד, מספר 21",
+      "enumeration": [
+        7
+      ]
+    },
+    {
+      "direction": "down",
+      "number": 1,
+      "text": "הגדרה לדוגמה בלבד, מספר 1",
+      "enumeration": [
+        5
+      ]
+    },
+    {
+      "direction": "down",
+      "number": 2,
+      "text": "הגדרה לדוגמה בלבד, מספר 2",
+      "enumeration": [
+        7
+      ]
+    },
+    {
+      "direction": "down",
+      "number": 3,
+      "text": "הגדרה לדוגמה בלבד, מספר 3",
+      "enumeration": [
+        4
+      ]
+    },
+    {
+      "direction": "down",
+      "number": 4,
+      "text": "הגדרה לדוגמה בלבד, מספר 4",
+      "enumeration": [
+        5
+      ]
+    },
+    {
+      "direction": "down",
+      "number": 5,
+      "text": "הגדרה לדוגמה בלבד, מספר 5",
+      "enumeration": [
+        3
+      ]
+    },
+    {
+      "direction": "down",
+      "number": 6,
+      "text": "הגדרה לדוגמה בלבד, מספר 6",
+      "enumeration": [
+        5
+      ]
+    },
+    {
+      "direction": "down",
+      "number": 11,
+      "text": "הגדרה לדוגמה בלבד, מספר 11",
+      "enumeration": [
+        7
+      ]
+    },
+    {
+      "direction": "down",
+      "number": 12,
+      "text": "הגדרה לדוגמה בלבד, מספר 12",
+      "enumeration": [
+        5
+      ]
+    },
+    {
+      "direction": "down",
+      "number": 13,
+      "text": "הגדרה לדוגמה בלבד, מספר 13",
+      "enumeration": [
+        5
+      ]
+    },
+    {
+      "direction": "down",
+      "number": 15,
+      "text": "הגדרה לדוגמה בלבד, מספר 15",
+      "enumeration": [
+        5
+      ]
+    },
+    {
+      "direction": "down",
+      "number": 16,
+      "text": "הגדרה לדוגמה בלבד, מספר 16",
+      "enumeration": [
+        4
+      ]
+    },
+    {
+      "direction": "down",
+      "number": 18,
+      "text": "הגדרה לדוגמה בלבד, מספר 18",
+      "enumeration": [
+        3
+      ]
+    }
+  ]
+}

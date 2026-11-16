@@ -1,0 +1,424 @@
+* {
+  box-sizing: border-box
+}
+
+body {
+  margin: 0;
+  background: #fff;
+  color: #171717;
+  font-family: Arial, "Noto Sans Hebrew", sans-serif;
+  line-height: 1.6
+}
+
+header {
+  border-bottom: 2px solid #191919;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 14px max(16px, calc((100vw - 1120px)/2));
+}
+
+.site-menu {
+  position: relative;
+  margin-inline-start: auto;
+  align-self: center
+}
+
+.site-menu summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px;
+  cursor: pointer;
+  list-style: none
+}
+
+.site-menu summary::-webkit-details-marker {
+  display: none
+}
+
+.menu-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  inset-inline-end: 0;
+  z-index: 10;
+  width: min(320px, calc(100vw - 24px));
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  background: #fff;
+  border: 1px solid #c6cfcc;
+  border-radius: 3px;
+  box-shadow: 0 8px 24px #0002
+}
+
+.menu-panel select {
+  width: 100%;
+  min-width: 0
+}
+
+.menu-panel a {
+  display: flex;
+  align-items: center;
+  min-height: 44px
+}
+
+.menu-panel form {
+  border-top: 1px solid #e7e7e7;
+  padding-top: 12px;
+  margin: 0
+}
+
+.brand {
+  font: bold 30px Georgia, serif;
+  text-decoration: none;
+  color: inherit
+}
+
+main {
+  max-width: 1120px;
+  margin: auto;
+  padding: 16px
+}
+
+h1 {
+  font-size: 28px;
+  margin: 16px 0 6px
+}
+
+h2 {
+  font-size: 21px;
+  border-bottom: 2px solid;
+  margin: 0 0 8px
+}
+
+a {
+  color: #285d64
+}
+
+button,
+select,
+input,
+textarea {
+  font: inherit
+}
+
+button,
+select {
+  min-height: 44px;
+  background: white;
+  border: 1px solid #aaa;
+  padding: 6px 12px;
+  border-radius: 3px;
+  color: inherit
+}
+
+button,
+a,
+select {
+  cursor: pointer
+}
+
+button:hover {
+  background: #f0f3f2
+}
+
+:focus-visible {
+  outline: 3px solid #367780;
+  outline-offset: 2px
+}
+
+.primary {
+  background: #193f43;
+  color: #fff;
+  border-color: #193f43
+}
+
+.primary:hover {
+  background: #2d5c60
+}
+
+.toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap
+}
+
+.toolbar select {
+  max-width: 100%;
+  flex: 1
+}
+
+.toolbar a {
+  white-space: nowrap
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 36px;
+  align-items: start
+}
+
+.board-panel {
+  position: sticky;
+  top: calc(var(--active-clue-height, 64px) + var(--viewport-top, 0px) + 12px);
+  background: white;
+  z-index: 2
+}
+
+html {
+  scroll-padding-top: calc(var(--active-clue-height, 64px) + 12px)
+}
+
+.active-clue-bar {
+  position: sticky;
+  top: var(--viewport-top, 0px);
+  z-index: 5;
+  margin-bottom: 16px;
+  background: #fff;
+  border: 1px solid #c6cfcc;
+  border-inline-start: 3px solid #285d64;
+  box-shadow: 0 2px 6px #0001
+}
+
+.active-clue {
+  margin: 0;
+  min-height: 60px;
+  padding: 12px 16px;
+  font-size: 18px;
+  font-weight: bold;
+  overflow-wrap: anywhere
+}
+
+.board {
+  position: relative;
+  max-width: 540px;
+  direction: ltr
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+  border: 2px solid #111;
+  direction: ltr;
+  background: #111;
+  gap: 1px;
+  aspect-ratio: 1
+}
+
+.cell {
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+  padding: 0;
+  background: #fff;
+  position: relative;
+  color: #111;
+  line-height: 1;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(17px, 4.4vw, 30px);
+  cursor: pointer
+}
+
+.cell.black {
+  background: #111;
+  cursor: default
+}
+
+.cell.selected {
+  background: #e5eeeb
+}
+
+.cell.active {
+  background: #b9d5cf;
+  box-shadow: inset 0 0 0 2px #285d64
+}
+
+.number {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font: 10px Arial
+}
+
+.entry {
+  position: absolute;
+  opacity: .02;
+  pointer-events: none;
+  width: 24px;
+  height: 24px;
+  font-size: 16px;
+  padding: 0;
+  border: 0;
+  z-index: -1
+}
+
+.caption {
+  font-size: 13px;
+  color: #555
+}
+
+.clues {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding-top: 8px
+}
+
+ol {
+  list-style: none;
+  padding: 0;
+  margin: 0
+}
+
+li {
+  margin-bottom: 3px
+}
+
+.clue {
+  display: block;
+  text-align: right;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #e7e7e7;
+  border-radius: 0;
+  padding: 9px 4px;
+  min-height: 44px;
+  line-height: 1.5
+}
+
+.clue.selected {
+  background: #e5eeeb;
+  border-inline-start: 3px solid #285d64
+}
+
+.enumeration {
+  white-space: nowrap;
+  direction: ltr;
+  unicode-bidi: isolate;
+  display: inline-block
+}
+
+.welcome {
+  max-width: 600px;
+  margin: 12vh auto
+}
+
+.welcome h1 {
+  font-size: 42px
+}
+
+.eyebrow {
+  color: #476c66
+}
+
+.editor-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px
+}
+
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 16px 0
+}
+
+legend {
+  font-weight: bold
+}
+
+label {
+  display: block
+}
+
+textarea,
+input {
+  border: 1px solid #999;
+  border-radius: 3px;
+  padding: 8px;
+  max-width: 100%
+}
+
+textarea {
+  width: 100%;
+  min-height: 74px
+}
+
+fieldset label {
+  margin-top: 12px
+}
+
+#status:empty {
+  display: none
+}
+
+#status {
+  color: #70400b
+}
+
+#editor>label input {
+  width: 100%
+}
+
+@media(max-width:760px) {
+  header {
+    padding: 10px 16px
+  }
+
+  header span {
+    font-size: 13px
+  }
+
+  main {
+    padding: 12px
+  }
+
+  .workspace {
+    display: block
+  }
+
+  .board-panel {
+    max-width: 540px;
+    margin: auto
+  }
+
+  .active-clue {
+    min-height: 54px;
+    padding: 10px 12px;
+    font-size: 16px
+  }
+
+  .clues {
+    gap: 16px;
+    margin-top: 24px
+  }
+
+  .editor-fields {
+    display: block
+  }
+
+  h1 {
+    font-size: 23px
+  }
+
+  .caption {
+    margin: 6px 0
+  }
+
+  .welcome h1 {
+    font-size: 34px
+  }
+}
+
+@media(max-width:760px) {
+  .board-panel {
+    position: static
+  }
+}
