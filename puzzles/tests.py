@@ -12,7 +12,7 @@ from django.utils import timezone
 from .auth import GoogleAdapter
 from .domain import save_puzzle
 from .grid import LENGTHS, NUMBERS, ROWS, SLOTS, normalize
-from .models import Clue, Puzzle, Solution
+from .models import AuthorizedEmail, Clue, Puzzle, Solution
 
 
 def payload(title="דוגמה"):
@@ -42,6 +42,8 @@ class AppTests(TestCase):
     def setUp(self):
         self.owner = self.user("owner@example.com")
         self.friend = self.user("friend@example.com")
+        AuthorizedEmail.objects.create(email="owner@example.com")
+        AuthorizedEmail.objects.create(email="friend@example.com")
         self.client.force_login(self.owner)
 
     @staticmethod
@@ -231,3 +233,26 @@ class AppTests(TestCase):
             self.assertEqual(self.send("post", data=payload()).status_code, 401)
         self.assertEqual(self.client.get("/login/local/").status_code, 404)
         self.assertNotContains(self.client.get("/login/"), "/login/local/")
+
+    def test_google_owner_can_manage_authorized_emails_in_django_admin(self):
+        self.assertContains(self.client.get("/"), 'href="/admin/"')
+        self.assertEqual(self.client.get("/admin/").status_code, 200)
+        self.owner.refresh_from_db()
+        self.assertTrue(self.owner.is_staff)
+        self.assertTrue(self.owner.is_superuser)
+        self.assertEqual(self.client.get("/admin/puzzles/authorizedemail/").status_code, 200)
+
+        add_response = self.client.post(
+            "/admin/puzzles/authorizedemail/add/",
+            {"email": "NEW.FRIEND@EXAMPLE.COM", "_save": "שמירה"},
+        )
+        self.assertEqual(add_response.status_code, 302)
+        added = AuthorizedEmail.objects.get(email="new.friend@example.com")
+        self.assertEqual(added.added_by, self.owner)
+
+        self.client.force_login(self.friend)
+        self.assertEqual(self.client.get("/admin/").status_code, 302)
+
+        self.client.logout()
+        login_response = self.client.get("/admin/login/")
+        self.assertContains(login_response, "/accounts/google/login/?next=%2Fadmin%2F")

@@ -50,13 +50,17 @@ port to the LAN/internet: forwarded protocol headers are trusted only because
 the origin is private. HTTP requests without a trusted HTTPS header redirect
 to HTTPS; port 8766 is not a separate browser-facing HTTPS server.
 
-If Google credentials or the allowlist change, edit `.local/app.env` and run:
+If Google credentials change, edit `.local/app.env` and run:
 
 ```sh
 docker compose -f compose.local.yaml up -d --force-recreate app
 ```
 
-Editing the development `.env` alone does not change the deployment. Rotating
+The initial allowlist is copied into the database during the first migration.
+After that, manage invited addresses at `https://higayon.idofrenkel.com/admin/`
+with the configured owner Google account. Removing an address takes effect on
+its next request. Editing the development `.env` alone does not change the
+deployment. Rotating
 `OWNER_API_TOKEN` in `.local/app.env` revokes the previous deployment API token.
 Do not regenerate or change the database password without also changing the
 existing PostgreSQL user's password.

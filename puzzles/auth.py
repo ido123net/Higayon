@@ -6,9 +6,27 @@ from allauth.socialaccount.models import SocialAccount
 from django.conf import settings
 from django.shortcuts import render
 
+from .models import AuthorizedEmail
+
 
 def allowed(email):
-    return bool(email and email.lower() in settings.ALLOWED_EMAILS)
+    normalized = email.strip().lower() if email else ""
+    return bool(
+        normalized
+        and (
+            normalized == settings.OWNER_EMAIL
+            or AuthorizedEmail.objects.filter(email=normalized).exists()
+        )
+    )
+
+
+def make_configured_owner_staff(user):
+    if user.email and user.email.strip().lower() == settings.OWNER_EMAIL:
+        user.is_staff = True
+        user.is_superuser = True
+        if getattr(user, "pk", None):
+            user.save(update_fields=["is_staff", "is_superuser"])
+    return user
 
 
 def invited(user):
@@ -45,6 +63,11 @@ class GoogleAdapter(DefaultSocialAccountAdapter):
                     status=403,
                 )
             )
+        make_configured_owner_staff(sociallogin.user)
+
+    def save_user(self, request, sociallogin, form=None):
+        user = super().save_user(request, sociallogin, form)
+        return make_configured_owner_staff(user)
 
     def is_open_for_signup(self, request, sociallogin):
         return True

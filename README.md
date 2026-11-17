@@ -15,7 +15,7 @@ uv run --env-file .env python manage.py runserver 127.0.0.1:8765
 uv run --env-file .env python manage.py demo
 ```
 
-Python 3.12 is pinned in `.python-version`. Use DEBUG=true only for local development. Public deployments require DEBUG=false, PostgreSQL and DJANGO_SECRET_KEY, and use HTTPS redirects and secure cookies. Google sign-in requires configured client credentials and an allowlisted, verified email. There is no local-login bypass. There is no admin site or public signup.
+Python 3.12 is pinned in `.python-version`. Use DEBUG=true only for local development. Public deployments require DEBUG=false, PostgreSQL and DJANGO_SECRET_KEY, and use HTTPS redirects and secure cookies. Google sign-in requires configured client credentials and an allowlisted, verified email. There is no local-login bypass or public signup. The owner manages invited email addresses in the Google-protected Django admin at `/admin/`.
 
 ## Host at home with a public domain
 
@@ -44,7 +44,7 @@ For PostgreSQL development: `docker compose up -d db`, set `DATABASE_URL=postgre
 
 Create a Google OAuth **Web application** client, configure the consent screen and test users if appropriate. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET. Authorized redirect URI is `http://127.0.0.1:8765/accounts/google/login/callback/` locally (use the same host in your browser), and `https://higayon.idofrenkel.com/accounts/google/login/callback/` for the local public deployment (or `https://YOUR_HOST/accounts/google/login/callback/` elsewhere). django-allauth handles OAuth state, exchange and provider validation. Its social adapter requires Google's verified email and the configured allowlist before login. Every page/API read checks verified Google account membership again, so removing an address revokes current session access on its next request.
 
-Set OWNER_EMAIL explicitly and include it in comma-separated ALLOWED_EMAILS. Owner status is never assigned from signup order. Invite friends by adding verified Google addresses to ALLOWED_EMAILS and restarting the app. Only the owner sees `/editor/` and can write via the API.
+Set OWNER_EMAIL explicitly and include it in comma-separated ALLOWED_EMAILS. On the first migration, this list seeds the database allowlist. Owner status is never assigned from signup order: the configured owner email becomes an administrator only after a verified Google sign-in. Open `/admin/` with that Google account to add or remove invited email addresses without restarting the app. Only the owner sees `/editor/` and can write via the API.
 
 Generate a token with `uv run python -c 'import secrets; print(secrets.token_urlsafe(48))'` and put it in server-side OWNER_API_TOKEN, never browser code or git. A missing token disables bearer auth. Rotate this secret and restart all replicas to replace/revoke it; there is one owner token. Browser writes use sessions plus CSRF. Production token use requires HTTPS. See [API schemas, complete payloads and curl](docs/API.md).
 

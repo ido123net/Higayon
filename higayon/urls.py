@@ -1,11 +1,13 @@
 from django.urls import include, path
 
 from puzzles import views
+from puzzles.admin import owner_admin_site
 
 urlpatterns = [
     path("", views.home),
     path("editor/", views.home, {"editor": True}),
     path("login/", views.login),
+    path("admin/", owner_admin_site.urls),
     path("accounts/", include("allauth.urls")),
     path("api/v1/template/", views.template_api),
     path("api/v1/puzzles/", views.puzzles_api),

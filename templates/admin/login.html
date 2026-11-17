@@ -1,0 +1,12 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+{% block content %}
+  <div id="content-main">
+    {% if user.is_authenticated %}
+      <p>החשבון הזה אינו חשבון הבעלים של היישום.</p>
+    {% else %}
+      <p>יש להתחבר באמצעות חשבון Google של בעל היישום.</p>
+      <a class="button" href="/accounts/google/login/?next=%2Fadmin%2F">כניסה עם Google</a>
+    {% endif %}
+  </div>
+{% endblock %}
