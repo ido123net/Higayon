@@ -85,6 +85,8 @@ kind: Ingress
 metadata:
   name: higayon
   namespace: higayon
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-production
 spec:
   ingressClassName: nginx
   tls:

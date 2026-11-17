@@ -39,6 +39,16 @@ variable "tls_secret_name" {
   default = "higayon-tls"
 }
 
+variable "tls_issuer_name" {
+  type        = string
+  description = "Existing cert-manager ClusterIssuer used for the Ingress TLS secret."
+  default     = "letsencrypt-production"
+  validation {
+    condition     = contains(["letsencrypt-staging", "letsencrypt-production"], var.tls_issuer_name)
+    error_message = "Choose the configured letsencrypt-staging or letsencrypt-production ClusterIssuer."
+  }
+}
+
 variable "ingress_class" {
   type    = string
   default = "nginx"

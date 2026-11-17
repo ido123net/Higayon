@@ -1,0 +1,70 @@
+name: higayon-local
+
+x-app: &app
+  image: higayon:local-deploy
+  build: .
+  env_file:
+    - path: .local/app.env
+      format: raw
+  networks: [origin, database]
+
+services:
+  db:
+    image: postgres:17-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7
+    restart: unless-stopped
+    env_file:
+      - path: .local/db.env
+        format: raw
+    volumes: [local-postgres:/var/lib/postgresql/data]
+    networks: [database]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U higayon -d higayon"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  migrate:
+    <<: *app
+    command: [python, manage.py, migrate, --noinput]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    <<: *app
+    restart: unless-stopped
+    ports: ["127.0.0.1:8766:8000"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/health/ready/', headers={'Host':'localhost', 'X-Forwarded-Proto':'https'}); urllib.request.urlopen(r, timeout=5)"
+      interval: 15s
+      timeout: 6s
+      retries: 5
+      start_period: 15s
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.11.0@sha256:b94b96edf2c9c4360f8879c8580cfaa99077f19c849ec595ca2f711b27d4f344
+    profiles: [public]
+    restart: unless-stopped
+    command: [tunnel, --no-autoupdate, run]
+    env_file:
+      - path: .local/tunnel.env
+        format: raw
+    networks: [origin]
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  local-postgres:
+
+networks:
+  origin:
+  database:
+    internal: true

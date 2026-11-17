@@ -16,3 +16,31 @@ Limitations: no real Google OAuth exchange was run because client credentials we
 ## Google-only browser login
 
 The temporary local-login option was removed at the user's request after Google credentials were configured. A regression test verifies the old preview account cannot access pages or the API, even with its old session and an allowlisted email, and the removed login URL returns 404.
+
+## Local public deployment preparation
+
+- `compose.local.yaml` builds and starts Gunicorn and PostgreSQL 17, with explicit
+  migration completion before app startup and a persistent database volume.
+  Database and app health checks pass. The database has no published port; the
+  diagnostic app port binds only to 127.0.0.1:8766.
+- The existing SQLite database was snapshotted locally; 54 user, verified Google
+  identity and puzzle objects were imported into PostgreSQL. The photographed
+  puzzle remains the latest, with its original UUID and all 24 clues. The
+  original SQLite database remains unchanged.
+- All 11 tests pass on both SQLite and PostgreSQL, including private config
+  permissions, literal secret preservation, refusal to overwrite deployment
+  credentials, and rejection of injected newlines/invalid owner configuration.
+  Ruff, formatting, ty, all 4 JS unit tests, and the Chrome browser smoke test pass.
+- Production `manage.py check --deploy` passes with DEBUG=false. HTTP checks
+  through the private origin with forwarded HTTPS headers return 200 for login,
+  readiness and collected solver JS; anonymous API reads return 401, while a
+  server-side owner-token read returns the actual puzzle with no solutions and
+  private/no-store cache headers. Google login generates the expected HTTPS
+  callback for higayon.idofrenkel.com; no real OAuth exchange was performed.
+- Both Compose configurations (including the optional public tunnel profile)
+  validate. `.local/`, the development `.env` and SQLite are absent from the built
+  image. Cloudflared and PostgreSQL images are pinned by manifest digest.
+
+Pending: Cloudflare domain activation and tunnel connection, the public Google
+OAuth redirect registration, and an end-to-end public HTTPS/Google login check.
+The local development server remains available separately at 127.0.0.1:8765.

@@ -1,0 +1,90 @@
+# Single-node hobby deployment. The PVC uses K3s local-path storage on the
+# encrypted EC2 root volume. This is persistent across pod restarts, not a backup.
+apiVersion: v1
+kind: Service
+metadata:
+  name: higayon-postgres
+  namespace: higayon
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: higayon-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: higayon-postgres
+  namespace: higayon
+spec:
+  serviceName: higayon-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: higayon-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: higayon-postgres
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: postgres
+          image: postgres:17-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: higayon-postgres-auth
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: higayon-postgres-auth
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: higayon-postgres-auth
+                  key: POSTGRES_PASSWORD
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 10Gi

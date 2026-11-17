@@ -146,6 +146,9 @@ resource "kubernetes_ingress_v1" "app" {
   metadata {
     name      = "higayon"
     namespace = kubernetes_namespace_v1.app.metadata[0].name
+    annotations = {
+      "cert-manager.io/cluster-issuer" = var.tls_issuer_name
+    }
   }
   spec {
     ingress_class_name = var.ingress_class

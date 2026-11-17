@@ -13,3 +13,4 @@ staticfiles/
 *.tfvars
 !example.tfvars
 playwright-report/
+.local/

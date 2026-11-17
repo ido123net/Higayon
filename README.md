@@ -7,21 +7,42 @@ Private, Hebrew, RTL cryptic crosswords built with Django 5.2 LTS, templates and
 ```sh
 uv sync --locked
 cp .env.example .env
-# Edit .env, then export it (this project does not implicitly load dotenv):
-set -a; source .env; set +a
-uv run python manage.py migrate
-uv run python manage.py runserver
+# First setup only: keep your existing .env if it is already configured.
+# Edit .env, then load it explicitly for each command:
+uv run --env-file .env python manage.py migrate
+uv run --env-file .env python manage.py runserver 127.0.0.1:8765
 # Optional, clearly labeled synthetic puzzle:
-uv run python manage.py demo
+uv run --env-file .env python manage.py demo
 ```
 
-Python 3.12 is pinned in `.python-version`. Never deploy with DEBUG=true. With DEBUG=false the app requires DJANGO_SECRET_KEY and uses HTTPS redirects and secure cookies. Google sign-in requires configured client credentials and an allowlisted, verified email. There is no local-login bypass. There is no admin site or public signup.
+Python 3.12 is pinned in `.python-version`. Use DEBUG=true only for local development. Public deployments require DEBUG=false, PostgreSQL and DJANGO_SECRET_KEY, and use HTTPS redirects and secure cookies. Google sign-in requires configured client credentials and an allowlisted, verified email. There is no local-login bypass. There is no admin site or public signup.
+
+## Host at home with a public domain
+
+The local deployment uses Docker Compose, PostgreSQL, Gunicorn and a Cloudflare
+Tunnel for `https://higayon.idofrenkel.com`. No VPS, Kubernetes cluster or router
+port forwarding is required. See [the local deployment guide](docs/LOCAL_DEPLOYMENT.md)
+for the private configuration, DNS, Google callback and tunnel setup.
+
+```sh
+# First setup only; reads your configured Google/owner values from .env:
+uv run --env-file .env python scripts/prepare_local.py
+docker compose -f compose.local.yaml up -d --build app
+# After configuring the named tunnel and .local/tunnel.env:
+docker compose -f compose.local.yaml --profile public up -d cloudflared
+```
+
+The app and PostgreSQL have been started locally, with the existing accounts and
+puzzles copied into the new persistent database. Cloudflare DNS/tunnel and the
+Google callback must be configured before the public domain works. Keep the
+computer awake with Docker running. The separate development site on port 8765
+uses SQLite; subsequent edits there do not sync to the deployment database.
 
 For PostgreSQL development: `docker compose up -d db`, set `DATABASE_URL=postgresql://higayon:local-only@localhost:5432/higayon`, then run migrations and the server normally. The Compose password is for local development only. Without DATABASE_URL, SQLite is used.
 
 ## Google and access configuration
 
-Create a Google OAuth **Web application** client, configure the consent screen and test users if appropriate. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET. Authorized redirect URI is `http://127.0.0.1:8000/accounts/google/login/callback/` locally (use the same host in your browser), and `https://YOUR_HOST/accounts/google/login/callback/` in production. django-allauth handles OAuth state, exchange and provider validation. Its social adapter requires Google's verified email and the configured allowlist before login. Every page/API read checks verified Google account membership again, so removing an address revokes current session access on its next request.
+Create a Google OAuth **Web application** client, configure the consent screen and test users if appropriate. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET. Authorized redirect URI is `http://127.0.0.1:8765/accounts/google/login/callback/` locally (use the same host in your browser), and `https://higayon.idofrenkel.com/accounts/google/login/callback/` for the local public deployment (or `https://YOUR_HOST/accounts/google/login/callback/` elsewhere). django-allauth handles OAuth state, exchange and provider validation. Its social adapter requires Google's verified email and the configured allowlist before login. Every page/API read checks verified Google account membership again, so removing an address revokes current session access on its next request.
 
 Set OWNER_EMAIL explicitly and include it in comma-separated ALLOWED_EMAILS. Owner status is never assigned from signup order. Invite friends by adding verified Google addresses to ALLOWED_EMAILS and restarting the app. Only the owner sees `/editor/` and can write via the API.
 
@@ -57,22 +78,39 @@ docker run --rm --env-file .env higayon:local python manage.py migrate --noinput
 
 The image installs the locked runtime dependencies, collects WhiteNoise static files and runs Gunicorn as a non-root user. Use external PostgreSQL for deployment. Docker's localhost is the container itself; configure DATABASE_URL accordingly.
 
-## Existing Kubernetes cluster
+## Kubernetes deployment
 
-No cloud, network, cluster, database, ingress controller, registry, certificate issuer or DNS resources are provisioned. Supply an existing cluster/context, reachable PostgreSQL database, image registry access, ingress controller, DNS record, and existing TLS secret. Build/push an immutable image tag first. Database backups and cluster secret encryption are the operator's responsibility.
+The personal K3s cluster is hosted on a single AWS EC2 instance. The shared
+infrastructure repository manages K3s, Traefik, cert-manager and the Let's
+Encrypt issuers. This app repository manages Higayon and its optional
+single-node PostgreSQL database. A managed database is not provisioned.
 
-Create namespace and runtime secret out of band before deployment. Use a protected temporary env file containing only DJANGO_SECRET_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, OWNER_API_TOKEN and DATABASE_URL (`postgresql://...`, URL-encode credentials). Do not commit that file:
+For this hobby deployment, `infra/kubernetes/postgres.yaml` creates PostgreSQL
+17 on K3s `local-path` storage (10 GiB on the encrypted EC2 root disk). That
+volume survives pod restarts but is not an offsite backup and will be lost with
+the host. Offsite backups are currently disabled. To use an external PostgreSQL
+instead, skip the manifest and set `DATABASE_URL` to that database.
+
+Build the app image for the EC2 host's amd64 architecture and transfer it to
+the cluster, or push it to a registry accessible to K3s. Create the namespace
+and PostgreSQL secret out of band, then apply the database manifest. The
+runtime secret contains only server-side values (`DJANGO_SECRET_KEY`,
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OWNER_API_TOKEN`, and `DATABASE_URL`)
+and stays outside Terraform and Git:
 
 ```sh
 kubectl create namespace higayon
+kubectl -n higayon create secret generic higayon-postgres-auth --from-env-file=/secure/path/postgres.env
+kubectl apply -f infra/kubernetes/postgres.yaml
+# Wait until the StatefulSet is ready before deploying the app.
+kubectl -n higayon rollout status statefulset/higayon-postgres --timeout=300s
 kubectl -n higayon create secret generic higayon-runtime --from-env-file=/secure/path/runtime.env
-# Provision your certificate as existing Secret higayon-tls in this namespace.
 ```
 
 Two equivalent deployment paths:
 
-* **Terraform**: `cd infra/terraform`; `terraform init`; copy `example.tfvars` to a local ignored `.tfvars`, edit image, namespace, hostname, context, ingress class, TLS/runtime secret references and resources. If the namespace exists, `terraform import kubernetes_namespace_v1.app higayon`. Run `terraform fmt -check`, `terraform validate`, `terraform plan -var-file=local.tfvars`, then apply after reviewing the plan. The provider uses the existing kubeconfig context. No secret values are passed to Terraform or read into its state. Change `release` for each image rollout: the migration Job completes before Deployment changes. Preserve its completed Job until the next release. Existing secret names must match the chosen namespace.
-* **Plain manifests**: customize `infra/kubernetes/app.yaml` (all placeholders, namespace, resources, config and image in both Job and Deployment). Apply Namespace/ConfigMap/Job first; wait with `kubectl -n higayon wait --for=condition=complete job/higayon-migrate-v1 --timeout=600s`; then apply Deployment/Service/Ingress. On later releases use a new migration Job name and wait before rolling out the new image. Do not blindly apply all resources concurrently to an unmigrated database.
+* **Terraform**: `cd infra/terraform`; `terraform init`; copy `example.tfvars` to a local ignored `.tfvars`, then set the image, namespace, hostname, kubeconfig/context, ingress class (`traefik` here), TLS issuer, runtime secret reference and resources. If the namespace already exists, import it with `terraform import kubernetes_namespace_v1.app higayon`. Review `terraform plan -var-file=local.tfvars` before applying. The migration Job must complete before the Deployment changes. No secret values are passed to Terraform or read into its state. Change `release` for each image rollout and preserve its completed Job until the next release.
+* **Plain manifests**: customize `infra/kubernetes/app.yaml` (all placeholders, namespace, resources, config and image in both Job and Deployment). The Ingress annotation selects the configured cert-manager ClusterIssuer and requests the named TLS Secret automatically. Use the staging issuer while testing, then switch to production after DNS and HTTP-01 validation work.
 
 Readiness checks database availability, liveness checks the process. WhiteNoise serves collected assets. Migrations use the same external PostgreSQL connection and image as the application; replicas never run migrations on startup. For secret rotation, update the existing Secret outside Terraform, then `kubectl -n higayon rollout restart deployment/higayon`.
 
