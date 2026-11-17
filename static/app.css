@@ -422,3 +422,15 @@ fieldset label {
     position: static
   }
 }
+
+#session-controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding-block: .35rem; }
+#session-controls[hidden], #session-sharing[hidden] { display: none; }
+#confirmation-state, .answer-count { font-size: .8rem; color: #555; }
+.answer-count { display: block; font-weight: normal; }
+#session-sharing { display: grid; gap: .5rem; }
+#invite-link { direction: ltr; min-width: 0; width: 100%; box-sizing: border-box; }
+#answer-decisions { max-width: min(90vw, 34rem); max-height: 80dvh; overflow: auto; border: 1px solid #555; border-radius: .5rem; padding: 1rem; }
+#answer-decisions::backdrop { background: #0008; }
+.decision-row { display: grid; gap: .5rem; margin-block: 1rem; }
+.decision-row select { min-height: 44px; max-width: 100%; }
+#decision-error { color: #a11; }

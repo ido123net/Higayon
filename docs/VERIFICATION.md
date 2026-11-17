@@ -44,3 +44,25 @@ The temporary local-login option was removed at the user's request after Google 
 Pending: Cloudflare domain activation and tunnel connection, the public Google
 OAuth redirect registration, and an end-to-end public HTTPS/Google login check.
 The local development server remains available separately at 127.0.0.1:8765.
+
+
+## Shared sessions — 2026-11-18
+
+- The backend suite passes on SQLite (the PostgreSQL row-lock concurrency test
+  is skipped) and PostgreSQL 17 (all 19 tests pass). Session tests cover explicit
+  joins, membership isolation, private answer reads, counts, normalization,
+  atomic validation, withdrawal tombstones, stale versions, link revocation,
+  account revocation, CSRF, and rejection of player operations via owner tokens.
+- A PostgreSQL test issues two simultaneous first confirmations for one member:
+  exactly one succeeds and the other receives 409, leaving version one.
+- The existing Chrome solver/editor smoke test passes. A second test uses two
+  isolated browser contexts and verifies that typing sends no answers, the count
+  refreshes without reloading after confirmation, restoration sends nothing,
+  deletion plus refresh preserves pending decisions, explicit withdrawal works,
+  crossing clues require separate decisions, failed writes need an explicit
+  retry, and version conflicts retain local letters.
+- Shared solver phone (375×812) and desktop (1280×900) screenshots were inspected.
+  Real mobile keyboards and a live Google OAuth exchange were not tested for
+  this change; browser contexts use verified Google-backed test users.
+- This feature adds an additive migration and changes application assets. The
+  deployment must complete its migration job before rolling out the new app.

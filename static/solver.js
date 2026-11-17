@@ -1,3 +1,4 @@
+import {sessionApi, sharedSession} from "./sessions.js";
 import {
   api,
   date,
@@ -22,9 +23,13 @@ let puzzle, values = {},
   clueEls = new Map(),
   generation = 0,
   loading = true;
+const sessionId = JSON.parse($("session-id").textContent);
+let shared = null;
 const message = text => {
   status.textContent = text;
 };
+
+if (sessionId) shared = sharedSession(sessionId, message);
 
 function paint() {
   for (const [coord, el] of cellEls) {
@@ -43,9 +48,11 @@ function paint() {
     input.style.top = `${cell.offsetTop}px`;
     input.style.left = `${cell.offsetLeft}px`;
   }
+  shared?.paint(active, clueEls);
 }
 
-function select(slot, at = 0, focus = true) {
+async function select(slot, at = 0, focus = true) {
+  if (active && key(active) !== key(slot) && shared && !await shared.guard()) return;
   active = slot;
   index = at;
   paint();
@@ -104,6 +111,11 @@ function draw() {
       button.className = "clue";
       button.append(`${slot.number}. ${clue.text} `, enumeration(clue, slot.length));
       button.addEventListener("click", () => select(slot));
+      if (shared) {
+        const badge = document.createElement("small");
+        badge.className = "answer-count";
+        button.append(badge);
+      }
       li.append(button);
       $(d).append(li);
       clueEls.set(key(slot), button);
@@ -139,9 +151,13 @@ async function load(id = "latest") {
     $("puzzles").value = puzzle.id;
     const cells = new Set(puzzle.template.slots.flatMap(s => s.cells.map(c => c.join(","))));
     message("");
-    store = progress(JSON.parse($("user-id").textContent), puzzle.id, cells, message);
+    store = progress(JSON.parse($("user-id").textContent), sessionId ? `session:${sessionId}` : puzzle.id, cells, message);
+    const hasDraft = store.has();
     values = store.load();
+    active = null;
+    if (shared) shared.attach(puzzle.template.slots, () => values, persist, paint, hasDraft);
     draw();
+    if (shared) void shared.guard();
   } catch (e) {
     if (current !== generation) return;
     if (puzzle) {
@@ -228,7 +244,13 @@ input.addEventListener("keydown", e => {
     if (other) select(other, other.cells.findIndex(c => c.join(",") === coord));
   }
 });
-$("puzzles").addEventListener("change", e => {
+$("puzzles").addEventListener("change", async e => {
+  const target = e.target.value;
+  if (shared) {
+    e.target.value = puzzle.id;
+    if (await shared.guard()) location.assign(`/?puzzle=${encodeURIComponent(target)}`);
+    return;
+  }
   document.querySelector(".site-menu").open = false;
   document.querySelector(".site-menu summary").focus({preventScroll: true});
   load(e.target.value);
@@ -239,7 +261,44 @@ try {
     const o = new Option(`${p.title} · נוסף ${date(p.created_at)}`, p.id);
     $("puzzles").add(o);
   }
-  await load();
+  if (shared) {
+    const session = await shared.load();
+    await load(session.puzzle_id);
+  } else {
+    await load(new URLSearchParams(location.search).get("puzzle") || "latest");
+  }
 } catch (e) {
   message(e.message);
 }
+
+$("confirm-answer").addEventListener("click", () => { if (shared && active) void shared.confirm(active); });
+$("solve-together").addEventListener("click", async () => {
+  if (!puzzle || loading) return;
+  $("solve-together").disabled = true;
+  try {
+    const session = await sessionApi("", {method: "POST", body: JSON.stringify({puzzle_id: puzzle.id})});
+    location.assign(`/sessions/${session.id}/`);
+  } catch (e) { message(e.message); $("solve-together").disabled = false; }
+});
+$("copy-invite").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("invite-link").value); message("הקישור הועתק."); }
+  catch { $("invite-link").select(); message("אפשר להעתיק את הקישור מהשדה המסומן."); }
+});
+$("revoke-invite").addEventListener("click", () => {
+  if (window.confirm("לבטל את קישור ההצטרפות? משתתפים קיימים יישארו במפגש.")) void shared?.revoke();
+});
+document.addEventListener("click", async e => {
+  const link = e.target.closest("a[href]");
+  if (!shared?.hasPending() || !link || e.defaultPrevented || link.target === "_blank") return;
+  e.preventDefault();
+  if (await shared.guard()) location.assign(link.href);
+});
+let approvedSubmit = false;
+document.addEventListener("submit", async e => {
+  if (!shared?.hasPending() || approvedSubmit) return;
+  e.preventDefault();
+  if (await shared.guard()) { approvedSubmit = true; e.target.requestSubmit(); approvedSubmit = false; }
+});
+window.addEventListener("beforeunload", e => {
+  if (shared?.hasPending()) { e.preventDefault(); e.returnValue = ""; }
+});

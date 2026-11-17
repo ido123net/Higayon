@@ -16,6 +16,7 @@ from django.test import Client, override_settings
 from playwright.sync_api import sync_playwright
 
 from puzzles.domain import save_puzzle
+from puzzles.models import AuthorizedEmail
 from puzzles.tests import AppTests, payload
 
 
@@ -32,6 +33,7 @@ class BrowserTests(StaticLiveServerTestCase):
     def test_browser(self):
         owner = AppTests.user("owner@example.com")
         friend = AppTests.user("friend@example.com")
+        AuthorizedEmail.objects.get_or_create(email=friend.email)
         puzzle = save_puzzle(payload())
         grouped = payload("עוד תשבץ")
         grouped["clues"][0]["enumeration"] = [4, 3]

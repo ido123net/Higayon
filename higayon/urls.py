@@ -1,10 +1,16 @@
 from django.urls import include, path
 
-from puzzles import views
+from puzzles import sessions, views
 from puzzles.admin import owner_admin_site
 
 urlpatterns = [
     path("", views.home),
+    path("join/<uuid:token>/", sessions.join),
+    path("sessions/<uuid:session_id>/", sessions.solver),
+    path("api/v1/sessions/", sessions.create),
+    path("api/v1/sessions/<uuid:session_id>/", sessions.state),
+    path("api/v1/sessions/<uuid:session_id>/answers/", sessions.confirm),
+    path("api/v1/sessions/<uuid:session_id>/revoke/", sessions.revoke),
     path("editor/", views.home, {"editor": True}),
     path("login/", views.login),
     path("admin/", owner_admin_site.urls),

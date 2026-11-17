@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>לפתור ביחד</h1>
+<p>{{ session.puzzle.title }}</p>
+<p>כל משתתף פותר בלוח האישי שלו. רק תשובות שאישרת במפורש יישמרו בשרת; לאחרים יוצג מונה בלבד.</p>
+<form method="post">{% csrf_token %}<button class="primary">הצטרפות לפתרון</button></form>
+{% endblock %}

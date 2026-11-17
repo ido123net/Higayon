@@ -31,3 +31,4 @@ exclude = ["puzzles/migrations/"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/browser_smoke.py" = ["E402"] # Django must initialize before model imports.
+"tests/browser_sessions.py" = ["E402"] # Django initializes before model imports.

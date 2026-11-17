@@ -9,6 +9,9 @@ export const letters = text => [...normalize(text)].filter(c => /^[א-ת]$/.test
 export function progress(user, puzzle, cells, warning, storage = () => window.localStorage) {
   const id = `higayon:v1:${user}:${puzzle}`;
   return {
+    has() {
+      try { return storage().getItem(id) !== null; } catch { return false; }
+    },
     load() {
       try {
         const raw = JSON.parse(storage().getItem(id) || "{}");

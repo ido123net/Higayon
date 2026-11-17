@@ -1,6 +1,6 @@
 # higayon
 
-Private, Hebrew, RTL cryptic crosswords built with Django 5.2 LTS, templates and vanilla JavaScript. The canonical 11×11 Dyokan layout is code in `puzzles/grid.py`; no layout editor, import, AI, checking, hints or multiplayer. Optional solutions stay server-side and are never sent to solvers. Each user's progress stays in this browser, separately per account and puzzle. Clearing site data deletes it; it does not travel between devices. Storage failures show a Hebrew notice.
+Private, Hebrew, RTL cryptic crosswords built with Django 5.2 LTS, templates and vanilla JavaScript. The canonical 11×11 Dyokan layout is code in `puzzles/grid.py`; no layout editor, import, AI, answer checking or hints. Optional shared sessions let authorized friends solve independently and share confirmation counts. Optional solutions stay server-side and are never sent to solvers. Draft progress stays in this browser, separated by user and puzzle or shared session. Clearing site data deletes drafts. Only explicitly confirmed session answers are stored on the server and available across devices. Storage failures show a Hebrew notice.
 
 ## Local startup (uv / SQLite)
 
@@ -44,7 +44,7 @@ For PostgreSQL development: `docker compose up -d db`, set `DATABASE_URL=postgre
 
 Create a Google OAuth **Web application** client, configure the consent screen and test users if appropriate. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET. Authorized redirect URI is `http://127.0.0.1:8765/accounts/google/login/callback/` locally (use the same host in your browser), and `https://higayon.idofrenkel.com/accounts/google/login/callback/` for the local public deployment (or `https://YOUR_HOST/accounts/google/login/callback/` elsewhere). django-allauth handles OAuth state, exchange and provider validation. Its social adapter requires Google's verified email and the configured allowlist before login. Every page/API read checks verified Google account membership again, so removing an address revokes current session access on its next request.
 
-Set OWNER_EMAIL explicitly and include it in comma-separated ALLOWED_EMAILS. On the first migration, this list seeds the database allowlist. Owner status is never assigned from signup order: the configured owner email becomes an administrator only after a verified Google sign-in. Open `/admin/` with that Google account to add or remove invited email addresses without restarting the app. Only the owner sees `/editor/` and can write via the API.
+Set OWNER_EMAIL explicitly and include it in comma-separated ALLOWED_EMAILS. On the first migration, this list seeds the database allowlist. Owner status is never assigned from signup order: the configured owner email becomes an administrator only after a verified Google sign-in. Open `/admin/` with that Google account to add or remove invited email addresses without restarting the app. Only the owner sees `/editor/` and can write puzzle definitions via the API. Authorized participants may submit their own confirmed session answers.
 
 Generate a token with `uv run python -c 'import secrets; print(secrets.token_urlsafe(48))'` and put it in server-side OWNER_API_TOKEN, never browser code or git. A missing token disables bearer auth. Rotate this secret and restart all replicas to replace/revoke it; there is one owner token. Browser writes use sessions plus CSRF. Production token use requires HTTPS. See [API schemas, complete payloads and curl](docs/API.md).
 
@@ -115,3 +115,38 @@ Two equivalent deployment paths:
 Readiness checks database availability, liveness checks the process. WhiteNoise serves collected assets. Migrations use the same external PostgreSQL connection and image as the application; replicas never run migrations on startup. For secret rotation, update the existing Secret outside Terraform, then `kubectl -n higayon rollout restart deployment/higayon`.
 
 Configuration was checked against the official [django-allauth Google provider guide](https://docs.allauth.org/en/latest/socialaccount/providers/google.html), [adapter hooks](https://docs.allauth.org/en/latest/socialaccount/adapter.html), and [Django deployment checklist](https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/).
+
+
+## Solve together
+
+Open a puzzle and select **לפתור ביחד** in its menu to create a session.
+Copy the session invitation link from the menu. Each friend must be authorized
+in the app and sign in with Google, then click **הצטרפות לפתרון**. Each session
+has its own personal drafts, even when several sessions use the same puzzle.
+Bookmark the session page to return later.
+
+Letters are saved only in browser storage. A complete selected clue enables
+**אישור התשובה**: only this explicit click submits the clue answer. Participants
+see counts of other authorized members who confirmed each clue, refreshed every
+ten seconds while the page is visible. Names, others' answers, and correctness
+checks are not displayed.
+
+Editing a confirmed answer stays local. Before moving away, decide whether to
+replace it, withdraw an incomplete answer, restore the confirmed letters, or
+continue editing. Crossing clues are considered together. Refreshing keeps drafts
+and pending decisions locally without submitting them. Confirmed answers can be
+retrieved on another device; partial drafts cannot. Conflicting submissions from
+another device require a new explicit confirmation. Failed writes never retry
+automatically.
+
+Creators can revoke the invitation from the session menu. The owner can manage
+sessions and membership at `/admin/`. Revoking a link prevents new joins but does
+not remove existing participants. The session migration is additive and never
+uploads existing browser progress. Run `uv run --env-file .env python manage.py
+migrate` before starting the updated app; container deployments must run their
+migration job before replacing the app.
+
+Session HTTP endpoints and payloads are documented in [docs/API.md](docs/API.md).
+Browser verification: `uv run --env-file .env python manage.py test
+tests.browser_smoke.BrowserTests tests.browser_sessions.SharedBrowserTests`
+(requires installed Chrome).

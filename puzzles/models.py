@@ -61,3 +61,53 @@ class AuthorizedEmail(models.Model):
 
     def __str__(self):
         return self.email
+
+
+class SolvingSession(models.Model):
+    objects = models.Manager()
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    puzzle = models.ForeignKey(Puzzle, on_delete=models.CASCADE, verbose_name="תשבץ")
+    creator = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="יוצר"
+    )
+    invite_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    invite_active = models.BooleanField(default=True, verbose_name="קישור הצטרפות פעיל")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="נוצר בתאריך")
+
+    class Meta:
+        verbose_name = "מפגש פתרון"
+        verbose_name_plural = "מפגשי פתרון"
+
+    def __str__(self):
+        return f"{cast(Puzzle, self.puzzle).title} · {self.id}"
+
+
+class SessionMember(models.Model):
+    objects = models.Manager()
+    session = models.ForeignKey(SolvingSession, on_delete=models.CASCADE, related_name="members")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="משתתף"
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["session", "user"], name="unique_session_member")
+        ]
+        verbose_name = "משתתף במפגש"
+        verbose_name_plural = "משתתפים במפגש"
+
+
+class ConfirmedAnswer(models.Model):
+    objects = models.Manager()
+    member = models.ForeignKey(SessionMember, on_delete=models.CASCADE, related_name="answers")
+    direction = models.CharField(max_length=6)
+    number = models.PositiveSmallIntegerField()
+    answer = models.CharField(max_length=11, blank=True)
+    version = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["member", "direction", "number"], name="unique_member_answer"
+            )
+        ]

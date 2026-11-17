@@ -2,7 +2,7 @@ from django.conf import settings
 from django.contrib import admin, messages
 
 from .auth import make_configured_owner_staff, owner
-from .models import AuthorizedEmail
+from .models import AuthorizedEmail, SessionMember, SolvingSession
 
 
 class OwnerAdminSite(admin.AdminSite):
@@ -51,3 +51,19 @@ class AuthorizedEmailAdmin(admin.ModelAdmin):
 
     def delete_queryset(self, request, queryset):
         queryset.exclude(email__iexact=settings.OWNER_EMAIL).delete()
+
+
+class SessionMemberInline(admin.TabularInline):
+    model = SessionMember
+    extra = 0
+
+
+@admin.register(SolvingSession, site=owner_admin_site)
+class SolvingSessionAdmin(admin.ModelAdmin):
+    list_display = ("puzzle", "creator", "invite_active", "created_at")
+    readonly_fields = ("id", "creator", "puzzle", "created_at")
+    fields = ("id", "puzzle", "creator", "invite_active", "created_at")
+    inlines = (SessionMemberInline,)
+
+    def has_add_permission(self, request):
+        return False

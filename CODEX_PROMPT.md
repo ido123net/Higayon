@@ -6,7 +6,7 @@ The requirements below reflect product decisions already made. Make sensible dec
 
 - The entire application UI must be in Hebrew and use RTL where appropriate. The product name is `higayon`.
 - This is a website for solving Hebrew cryptic crosswords, initially based on the fixed crossword layout in the newspaper's Dyokan supplement of Makor Rishon.
-- The first version supports individual solving only. Do not implement or design collaborative rooms, invitations, synchronization, presence, WebSockets, or multiplayer infrastructure. Keep ordinary, clear boundaries between puzzle content, solving state, and UI so the code remains maintainable.
+- Support independent solving and optional shared sessions for a single puzzle. Authorized Google users may create invitation links and explicitly join sessions. Each participant keeps a personal local draft and explicitly confirms complete clue answers. Share only counts of other participants who confirmed, never their names or answers. Poll every ten seconds; do not add presence, WebSockets, or additional infrastructure.
 - Crossword definitions will be supplied manually through an API or through an owner-only editing screen that uses that same API.
 - Do not implement image uploads, OCR, image parsing, PDF import, scraping, automatic crossword generation, or AI features. Reading the supplied reference image once to verify the fixed layout is implementation preparation, not an application feature.
 - There are initially no known answers. Include an owner-only API for uploading optional solutions, but do not add answer checking, hints, or solution-reveal features to the player UI in this version.
@@ -82,9 +82,9 @@ Numbered cells use zero-based `[row, column]` coordinates, measured from the phy
 5. Browser-only solving progress
 
 - Save progress automatically in browser storage so it survives refreshes, closing the browser, and returning later.
-- Keep progress separate for each authenticated user and puzzle. Changing accounts or selecting another puzzle must not display someone else's entries or overwrite another puzzle's progress.
-- Puzzle definitions, account data, and sessions live on the server; players' entered letters do not.
-- Do not implement server-side progress persistence or cross-device progress synchronization, and do not create unused server-side progress models or endpoints.
+- Keep independent progress separate for each user and puzzle, and session drafts separate for each user and session. Never mix accounts, puzzles, or sessions.
+- Puzzle definitions, accounts, shared-session membership, and explicitly confirmed answers live on the server. Draft letters stay local. Never submit answers on typing, completion, timers, navigation, refresh, or page close.
+- Persist only explicitly confirmed clue answers, with version checks preventing stale overwrites. A full answer can be confirmed, updated, or withdrawn explicitly. Before leaving changed confirmed clues, require a decision for all affected crossing clues: replace complete answers, withdraw incomplete answers, restore the confirmed local letters, or return to editing. Preserve pending drafts across refreshes. Own confirmed answers are readable on another device; local drafts take precedence.
 - Keep the small browser-storage implementation separate from grid interaction code. This is ordinary code organization, not a request to design future synchronization.
 - Handle unavailable browser storage gracefully with a clear Hebrew message rather than silently promising persistence.
 
@@ -92,7 +92,7 @@ Numbered cells use zero-based `[row, column]` coordinates, measured from the phy
 
 - Use Google sign-in for browser users and Django session authentication afterward.
 - Access is restricted to a configured allowlist of verified Google email addresses. Enforce it server-side for puzzle pages and API access.
-- Configure my owner identity explicitly. Only I can add puzzles, edit definitions, or upload solutions. Invited friends can read puzzle content and solve locally.
+- Configure my owner identity explicitly. Only I can add puzzles, edit definitions, or upload solutions. Invited friends can read puzzle content, solve locally, and create or join shared sessions. Session creators and the owner may revoke invitation links; existing members retain access. The owner manages session membership in Django admin.
 - Validate the Google identity through the maintained authentication integration, including verified email and normal OAuth/OIDC protections. Do not trust an email sent directly by the client or grant owner access to the first person who signs in.
 - Browser requests to the API use the existing session and normal CSRF protection for writes.
 - External scripts use a personal owner API token sent as `Authorization: Bearer <token>`. This token authenticates the configured owner and receives only the necessary puzzle-management permissions.
