@@ -6,7 +6,7 @@ The requirements below reflect product decisions already made. Make sensible dec
 
 - The entire application UI must be in Hebrew and use RTL where appropriate. The product name is `higayon`.
 - This is a website for solving Hebrew cryptic crosswords, initially based on the fixed crossword layout in the newspaper's Dyokan supplement of Makor Rishon.
-- Support independent solving and optional shared sessions for a single puzzle. Authorized Google users may create invitation links and explicitly join sessions. Each participant keeps a personal local draft and explicitly confirms complete clue answers. Share only counts of other participants who confirmed, never their names or answers. Poll every ten seconds; do not add presence, WebSockets, or additional infrastructure.
+- Support independent solving and optional shared sessions for a single puzzle. Authorized Google users may create invitation links and explicitly join sessions. Each participant keeps a personal local draft. Mark filled clues complete immediately. Sync changed complete answers and read other participants’ completion counts every ten seconds. Keep other participants’ names and answers private; do not add presence, WebSockets, or additional infrastructure.
 - Crossword definitions will be supplied manually through an API or through an owner-only editing screen that uses that same API.
 - Do not implement image uploads, OCR, image parsing, PDF import, scraping, automatic crossword generation, or AI features. Reading the supplied reference image once to verify the fixed layout is implementation preparation, not an application feature.
 - There are initially no known answers. Include an owner-only API for uploading optional solutions, but do not add answer checking, hints, or solution-reveal features to the player UI in this version.
@@ -64,8 +64,8 @@ Numbered cells use zero-based `[row, column]` coordinates, measured from the phy
 
 4. Solver experience
 
-- The primary device is a phone. Build a responsive, mobile-first layout that also works on desktop.
-- Make it resemble a newspaper crossword: white background, black grid and black squares, readable Hebrew text, restrained styling, and minimal controls. Use clear but subtle focus and selection states.
+- The primary device is a phone. Build a responsive, mobile-first layout. On desktop keep the board stationary and scroll the clue list independently.
+- Make it resemble a newspaper crossword: white background, black grid and black squares, readable Hebrew text, restrained styling, and minimal controls. Use clear but subtle focus and selection states. Mark completed clues with a restrained color and a small centered check.
 - Opening the site after authentication opens the most recently ADDED puzzle, ordered by immutable creation timestamp with a deterministic tie-breaker. Editing an older puzzle must not make it the latest.
 - Provide a simple way to select older puzzles. Display addition dates; publication-date ordering is outside the current scope.
 - On mobile, fit the complete grid within the viewport width. Keep the active clue easy to read while the native keyboard is open, and provide access to both clue lists labeled `מאוזן` and `מאונך`.
@@ -83,8 +83,8 @@ Numbered cells use zero-based `[row, column]` coordinates, measured from the phy
 
 - Save progress automatically in browser storage so it survives refreshes, closing the browser, and returning later.
 - Keep independent progress separate for each user and puzzle, and session drafts separate for each user and session. Never mix accounts, puzzles, or sessions.
-- Puzzle definitions, accounts, shared-session membership, and explicitly confirmed answers live on the server. Draft letters stay local. Never submit answers on typing, completion, timers, navigation, refresh, or page close.
-- Persist only explicitly confirmed clue answers, with version checks preventing stale overwrites. A full answer can be confirmed, updated, or withdrawn explicitly. Before leaving changed confirmed clues, require a decision for all affected crossing clues: replace complete answers, withdraw incomplete answers, restore the confirmed local letters, or return to editing. Preserve pending drafts across refreshes. Own confirmed answers are readable on another device; local drafts take precedence.
+- Puzzle definitions, accounts, shared-session membership, and completed shared-session answers live on the server. Partial letters stay local. Each ten-second sync sends changed complete answers and withdrawals for clues that became incomplete, including affected crossings. Do not send on individual keystrokes, navigation or page close.
+- Apply each batch atomically, with version checks preventing stale overwrites. Preserve drafts and pending edits across refreshes and temporary network failures. Read the participant's own saved answers across devices. Retain conflicting local edits and require a further edit before overwriting a newer version.
 - Keep the small browser-storage implementation separate from grid interaction code. This is ordinary code organization, not a request to design future synchronization.
 - Handle unavailable browser storage gracefully with a clear Hebrew message rather than silently promising persistence.
 

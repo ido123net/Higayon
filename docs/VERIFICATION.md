@@ -55,12 +55,10 @@ The local development server remains available separately at 127.0.0.1:8765.
   account revocation, CSRF, and rejection of player operations via owner tokens.
 - A PostgreSQL test issues two simultaneous first confirmations for one member:
   exactly one succeeds and the other receives 409, leaving version one.
-- The existing Chrome solver/editor smoke test passes. A second test uses two
-  isolated browser contexts and verifies that typing sends no answers, the count
-  refreshes without reloading after confirmation, restoration sends nothing,
-  deletion plus refresh preserves pending decisions, explicit withdrawal works,
-  crossing clues require separate decisions, failed writes need an explicit
-  retry, and version conflicts retain local letters.
+- The Chrome shared-session test uses two browser contexts and advances their
+  ten-second clocks independently. It checks immediate completion, batched updates
+  and withdrawals across crossings, private letters, counts after the next read,
+  reload with pending edits, offline retry, version conflicts, and desktop list scrolling.
 - Shared solver phone (375×812) and desktop (1280×900) screenshots were inspected.
   Real mobile keyboards and a live Google OAuth exchange were not tested for
   this change; browser contexts use verified Google-backed test users.

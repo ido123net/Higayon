@@ -159,7 +159,7 @@ def confirm(request, session_id):
     object_fields(data, ["changes"])
     changes = data.get("changes")
     if not isinstance(changes, list) or not 1 <= len(changes) <= len(SLOTS):
-        raise Invalid("יש לבחור הגדרות לאישור או לביטול.")
+        raise Invalid("יש לכלול לפחות הגדרה אחת לסנכרון.")
     seen = set()
     cleaned = []
     for change in changes:
@@ -195,7 +195,7 @@ def confirm(request, session_id):
             (a.direction, a.number): a for a in ConfirmedAnswer.objects.filter(member=member)
         }
         if any((current[d, n].version if (d, n) in current else 0) != v for d, n, _, v in cleaned):
-            return error("התשובות עודכנו בכרטיסייה או במכשיר אחר. יש לבדוק ולאשר שוב.", 409)
+            return error("התשובות עודכנו בכרטיסייה או במכשיר אחר.", 409)
         result = {}
         for d, n, answer, version in cleaned:
             ConfirmedAnswer.objects.update_or_create(

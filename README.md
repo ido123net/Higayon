@@ -1,6 +1,6 @@
 # higayon
 
-Private, Hebrew, RTL cryptic crosswords built with Django 5.2 LTS, templates and vanilla JavaScript. The canonical 11×11 Dyokan layout is code in `puzzles/grid.py`; no layout editor, import, AI, answer checking or hints. Optional shared sessions let authorized friends solve independently and share confirmation counts. Optional solutions stay server-side and are never sent to solvers. Draft progress stays in this browser, separated by user and puzzle or shared session. Clearing site data deletes drafts. Only explicitly confirmed session answers are stored on the server and available across devices. Storage failures show a Hebrew notice.
+Private, Hebrew, RTL cryptic crosswords built with Django 5.2 LTS, templates and vanilla JavaScript. The canonical 11×11 Dyokan layout is code in `puzzles/grid.py`; no layout editor, import, AI, answer checking or hints. Optional shared sessions let authorized friends solve independently and share completion counts. Optional solutions stay server-side and are never sent to solvers. Draft progress stays in this browser, separated by user and puzzle or shared session. Clearing site data deletes drafts. Complete session answers sync to the server every ten seconds. Storage failures show a Hebrew notice.
 
 ## Local startup (uv / SQLite)
 
@@ -16,6 +16,16 @@ uv run --env-file .env python manage.py demo
 ```
 
 Python 3.12 is pinned in `.python-version`. Use DEBUG=true only for local development. Public deployments require DEBUG=false, PostgreSQL and DJANGO_SECRET_KEY, and use HTTPS redirects and secure cookies. Google sign-in requires configured client credentials and an allowlisted, verified email. There is no local-login bypass or public signup. The owner manages invited email addresses in the Google-protected Django admin at `/admin/`.
+
+## Try two players in one browser
+
+Run `uv run python -m scripts.multiuser_demo` and open [the local two-player demo](http://localhost:8771/).
+The page shows Noa and Amit solving the same sample puzzle side by side, with independent drafts.
+Amit has already completed 1 across. Fill that clue in Noa’s board to see its green check.
+Amit's people count updates after both boards have synced. Each board also has a link to open it in a full tab.
+
+The demo binds to loopback ports 8771 and 8772 and uses a temporary SQLite database and two test identities.
+Stop it with Ctrl+C and rerun the command for a fresh session. No Google credentials or `.env` file are needed.
 
 ## Host at home with a public domain
 
@@ -44,7 +54,7 @@ For PostgreSQL development: `docker compose up -d db`, set `DATABASE_URL=postgre
 
 Create a Google OAuth **Web application** client, configure the consent screen and test users if appropriate. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET. Authorized redirect URI is `http://127.0.0.1:8765/accounts/google/login/callback/` locally (use the same host in your browser), and `https://higayon.idofrenkel.com/accounts/google/login/callback/` for the local public deployment (or `https://YOUR_HOST/accounts/google/login/callback/` elsewhere). django-allauth handles OAuth state, exchange and provider validation. Its social adapter requires Google's verified email and the configured allowlist before login. Every page/API read checks verified Google account membership again, so removing an address revokes current session access on its next request.
 
-Set OWNER_EMAIL explicitly and include it in comma-separated ALLOWED_EMAILS. On the first migration, this list seeds the database allowlist. Owner status is never assigned from signup order: the configured owner email becomes an administrator only after a verified Google sign-in. Open `/admin/` with that Google account to add or remove invited email addresses without restarting the app. Only the owner sees `/editor/` and can write puzzle definitions via the API. Authorized participants may submit their own confirmed session answers.
+Set OWNER_EMAIL explicitly and include it in comma-separated ALLOWED_EMAILS. On the first migration, this list seeds the database allowlist. Owner status is never assigned from signup order: the configured owner email becomes an administrator only after a verified Google sign-in. Open `/admin/` with that Google account to add or remove invited email addresses without restarting the app. Only the owner sees `/editor/` and can write puzzle definitions via the API. Authorized participants may sync their own completed session answers.
 
 Generate a token with `uv run python -c 'import secrets; print(secrets.token_urlsafe(48))'` and put it in server-side OWNER_API_TOKEN, never browser code or git. A missing token disables bearer auth. Rotate this secret and restart all replicas to replace/revoke it; there is one owner token. Browser writes use sessions plus CSRF. Production token use requires HTTPS. See [API schemas, complete payloads and curl](docs/API.md).
 
@@ -125,19 +135,16 @@ in the app and sign in with Google, then click **הצטרפות לפתרון**. 
 has its own personal drafts, even when several sessions use the same puzzle.
 Bookmark the session page to return later.
 
-Letters are saved only in browser storage. A complete selected clue enables
-**אישור התשובה**: only this explicit click submits the clue answer. Participants
-see counts of other authorized members who confirmed each clue, refreshed every
-ten seconds while the page is visible. Names, others' answers, and correctness
-checks are not displayed.
+Filling the last cell marks a clue complete immediately, including words completed by crossings.
+Every ten seconds an open session reads completion counts and the player's own saved answers,
+then sends changed complete answers in one versioned batch. Clearing a cell withdraws any
+affected saved answer on the next sync. Partial letters stay local. Other participants see
+counts on their next read, so their view can lag a write by one polling interval.
 
-Editing a confirmed answer stays local. Before moving away, decide whether to
-replace it, withdraw an incomplete answer, restore the confirmed letters, or
-continue editing. Crossing clues are considered together. Refreshing keeps drafts
-and pending decisions locally without submitting them. Confirmed answers can be
-retrieved on another device; partial drafts cannot. Conflicting submissions from
-another device require a new explicit confirmation. Failed writes never retry
-automatically.
+Drafts and queued edits survive a refresh. Reopening a session resumes pending sync.
+Network failures retry on the next tick. If another device changed the same clue, the local
+draft is kept and a further edit is required to replace the newer answer. Independent puzzles
+save only in the browser.
 
 Creators can revoke the invitation from the session menu. The owner can manage
 sessions and membership at `/admin/`. Revoking a link prevents new joins but does

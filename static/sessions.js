@@ -9,7 +9,7 @@ export async function sessionApi(path = '', options = {}) {
       headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf || '', ...options.headers}
     });
   } catch {
-    throw new Error('אין חיבור לשרת. הטיוטה נשמרה מקומית; יש ללחוץ שוב כדי לשלוח.');
+    throw new Error('אין חיבור לשרת.');
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -20,187 +20,176 @@ export async function sessionApi(path = '', options = {}) {
   return data;
 }
 
-// This controller never uploads from input, timers, pagehide, or storage events.
+// Missing cells stay as spaces so a partial word can never be uploaded.
+function word(slot, values) {
+  return slot.cells.map(cell => values[cell.join(',')] || ' ').join('');
+}
+
+export function completedAnswer(slot, values) {
+  const text = word(slot, values);
+  return text.includes(' ') ? '' : text;
+}
+
+function showCount(badge, count) {
+  const number = String(count ?? 0);
+  const value = badge.querySelector('.count-value');
+  if (value.textContent === number) return;
+  value.textContent = number;
+  const label = `מספר המשתתפים האחרים שהשלימו את ההגדרה: ${number}`;
+  badge.setAttribute('aria-label', label);
+  badge.title = label;
+}
+
 export function sharedSession(id, message) {
-  let state, own = {}, counts = {}, slots = [], getValues, save, paint;
-  let dialogResolve = null, busy = false, disposed = false, polling = false, lastError = '';
+  let state, slots, values, save, paint, syncing = false;
+  let own = {}, counts = {}, pending = {};
+  const words = new Map();
   const $ = name => document.getElementById(name);
-  const dialog = $('answer-decisions');
-  const word = (slot, values = getValues()) => slot.cells.map(c => values[c.join(',')] || ' ').join('');
-  const complete = text => /^[א-ת]+$/.test(text);
-  const dirty = () => slots.filter(s => own[key(s)]?.answer && own[key(s)].answer !== word(s));
-  const change = (slot, answer) => ({direction: slot.direction, number: slot.number, answer, version: own[key(slot)]?.version || 0});
-  const title = slot => `${slot.number} ${slot.direction === 'across' ? 'מאוזן' : 'מאונך'}`;
+  const version = (records, k) => records[k]?.version || 0;
 
-  async function send(changes) {
-    if (busy) return false;
-    busy = true;
+  // Keep the version an edit was based on, including across a reload or lost response.
+  function edited() {
+    for (const slot of slots) {
+      const k = key(slot), text = word(slot, values);
+      if (text === words.get(k)) continue;
+      words.set(k, text);
+      if (completedAnswer(slot, values) || own[k]?.answer || k in pending) {
+        pending[k] = version(own, k);
+      }
+    }
+  }
+
+  function serverCells(records) {
+    const cells = {};
+    for (const slot of slots) {
+      const answer = records[key(slot)]?.answer;
+      if (answer) slot.cells.forEach((cell, i) => { cells[cell.join(',')] = answer[i]; });
+    }
+    return cells;
+  }
+
+  function mergeOwn(remote) {
+    const changed = slots.some(slot => version(remote, key(slot)) !== version(own, key(slot)));
+    if (!changed) return false;
+    const before = serverCells(own), after = serverCells(remote);
+    const protectedCells = new Set(slots.filter(s => key(s) in pending)
+      .flatMap(s => s.cells.map(c => c.join(','))));
+    for (const coord of new Set([...Object.keys(before), ...Object.keys(after)])) {
+      if (protectedCells.has(coord) || values[coord] !== before[coord]) continue;
+      if (after[coord]) values[coord] = after[coord];
+      else delete values[coord];
+    }
+    for (const slot of slots) {
+      const k = key(slot), text = word(slot, values);
+      // A letter restored from this player's other device can finish a crossing draft.
+      if (!(k in pending) && words.has(k) && words.get(k) !== text &&
+          version(own, k) === version(remote, k) &&
+          completedAnswer(slot, values) !== (remote[k]?.answer || '')) {
+        pending[k] = version(remote, k);
+      }
+      words.set(k, text);
+    }
+    own = remote;
+    return true;
+  }
+
+  function syncMessage(text) {
+    const el = $('sync-status');
+    if (el.textContent !== text) el.textContent = text;
+    el.hidden = !text;
+  }
+
+  async function sync() {
+    if (syncing) return;
+    syncing = true;
     try {
-      const result = await sessionApi(`${id}/answers/`, {method: 'POST', body: JSON.stringify({changes})});
-      Object.assign(own, result.own);
-      return true;
-    } catch (e) {
-      if (e.status === 409) {
-        // Refresh versions, preserving every local letter. A second explicit click is required.
-        try { own = (await sessionApi(`${id}/`)).own; } catch { /* keep previous baseline */ }
-      }
-      lastError = e.message;
-      message(e.message);
-      $('decision-error').textContent = e.message;
-      return false;
-    } finally {
-      busy = false;
-      paint?.();
-    }
-  }
-
-  function finish(value) {
-    dialog.close();
-    const resolve = dialogResolve;
-    dialogResolve = null;
-    if (!value) $('entry').focus({preventScroll: true});
-    resolve?.(value);
-  }
-  $('decisions-cancel').addEventListener('click', () => { if (!busy) finish(false); });
-  dialog.addEventListener('cancel', e => { e.preventDefault(); if (!busy) finish(false); });
-
-  function renderDecisions() {
-    $('decision-list').replaceChildren();
-    $('decision-error').textContent = '';
-    for (const slot of dirty()) {
-      const row = document.createElement('label');
-      row.className = 'decision-row';
-      const text = document.createElement('span');
-      const isComplete = complete(word(slot));
-      text.textContent = `${title(slot)}: ${isComplete ? 'להחליף לתשובה החדשה?' : 'לבטל את התשובה הקודמת?'}`;
-      const select = document.createElement('select');
-      select.dataset.clue = key(slot);
-      select.add(new Option('יש לבחור פעולה', ''));
-      select.add(new Option(isComplete ? 'החלפה לתשובה החדשה' : 'ביטול האישור הקודם', 'submit'));
-      select.add(new Option('שחזור התשובה המאושרת', 'restore'));
-      row.append(text, select);
-      $('decision-list').append(row);
-    }
-  }
-
-  $('decisions-apply').addEventListener('click', async () => {
-    if (busy) return;
-    const pending = dirty();
-    const selections = [...document.querySelectorAll('#decision-list select')];
-    if (selections.some(s => !s.value)) {
-      $('decision-error').textContent = 'יש לבחור פעולה לכל הגדרה, או לחזור לעריכה.';
-      return;
-    }
-    const next = {...getValues()}, changes = [];
-    for (const slot of pending) {
-      if (selections.find(s => s.dataset.clue === key(slot))?.value === 'restore') {
-        [...own[key(slot)].answer].forEach((letter, i) => { next[slot.cells[i].join(',')] = letter; });
-      }
-    }
-    if (pending.some(slot => selections.find(s => s.dataset.clue === key(slot))?.value === 'restore' && word(slot, next) !== own[key(slot)].answer)) {
-      $('decision-error').textContent = 'התשובות המאושרות סותרות זו את זו באות מצטלבת. יש לחזור לעריכה ולאשר תשובה מתוקנת.';
-      return;
-    }
-    for (const slot of pending) {
-      const action = selections.find(s => s.dataset.clue === key(slot))?.value;
-      if (action === 'submit') {
-        if (word(slot, next) !== word(slot)) {
-          $('decision-error').textContent = 'השחזור משנה אותיות בתשובה אחרת שבחרת לשלוח. יש לחזור לעריכה ולהכריע באותיות המצטלבות.';
-          return;
+      const remote = await sessionApi(`${id}/`);
+      counts = remote.counts;
+      if (!remote.invite_active) $('session-sharing').hidden = true;
+      let changed = mergeOwn(remote.own);
+      const changes = [];
+      let conflict = false;
+      for (const slot of slots) {
+        const k = key(slot);
+        if (!(k in pending)) continue;
+        const answer = completedAnswer(slot, values);
+        if (answer === (own[k]?.answer || '')) {
+          delete pending[k];
+          changed = true;
+        } else if (pending[k] !== version(own, k)) {
+          conflict = true;
+        } else {
+          changes.push({direction: slot.direction, number: slot.number, answer: answer || null, version: pending[k]});
         }
-        changes.push(change(slot, complete(word(slot)) ? word(slot) : null));
       }
+      if (changed) save();
+      if (changes.length) {
+        const result = await sessionApi(`${id}/answers/`, {method: 'POST', body: JSON.stringify({changes})});
+        Object.assign(own, result.own);
+        // Typing can continue during the request. Compare the live grid before retiring an edit.
+        for (const slot of slots) {
+          const k = key(slot), saved = result.own[k];
+          if (!saved) continue;
+          if (completedAnswer(slot, values) === saved.answer) delete pending[k];
+          else pending[k] = saved.version;
+        }
+        save();
+      }
+      syncMessage(conflict ? 'תשובה השתנתה במכשיר אחר. הטיוטה המקומית נשמרה. כדי לסנכרן אותה, יש לערוך את ההגדרה שוב.' : '');
+    } catch (error) {
+      syncMessage(error.status === 409 ? 'תשובה השתנתה במכשיר אחר. הגרסה תיבדק בסנכרון הבא.' :
+        `${error.message} הסנכרון ינסה שוב בעוד עשר שניות.`);
+    } finally {
+      syncing = false;
+      paint();
     }
-    // Restoring crossing words must not silently change another confirmed answer.
-    if (slots.some(s => own[key(s)]?.answer && !pending.includes(s) && word(s, next) !== own[key(s)].answer)) {
-      $('decision-error').textContent = 'השחזור משפיע על הגדרה מאושרת נוספת. יש לחזור לעריכה.';
-      return;
-    }
-    $('decisions-apply').disabled = true;
-    if (!changes.length || await send(changes)) {
-      Object.keys(getValues()).forEach(k => delete getValues()[k]);
-      Object.assign(getValues(), next);
-      save();
-      finish(true);
-    } else {
-      renderDecisions();
-      $('decision-error').textContent = lastError;
-    }
-    $('decisions-apply').disabled = false;
-  });
-
-  async function poll() {
-    if (disposed || polling || document.hidden) return;
-    polling = true;
-    try {
-      const result = await sessionApi(`${id}/`);
-      if (disposed) return;
-      counts = result.counts;
-      if (!result.invite_active) $('session-sharing').hidden = true;
-      paint?.();
-    } catch (e) { if (!disposed) message(e.message); }
-    finally { polling = false; }
   }
-  const timer = setInterval(poll, 10000);
-  document.addEventListener('visibilitychange', poll);
 
   return {
     async load() {
       state = await sessionApi(`${id}/`);
-      own = state.own;
       counts = state.counts;
       return state;
     },
-    attach(templateSlots, values, persist, repaint, hasDraft) {
-      slots = templateSlots; getValues = values; save = persist; paint = repaint;
-      if (!hasDraft) {
-        // Use own confirmed answers on a new device; existing drafts, including deletions, win.
+    attach(templateSlots, draft, savedSync, hasDraft, persist, repaint) {
+      slots = templateSlots; values = draft; save = persist; paint = repaint;
+      if (savedSync) {
+        own = savedSync.own || {};
+        pending = savedSync.pending || {};
+        for (const slot of slots) words.set(key(slot), word(slot, values));
+        mergeOwn(state.own);
+      } else {
+        own = state.own;
+        if (!hasDraft) Object.assign(values, serverCells(own));
+        // Upgrade legacy local grids. Missing letters alone are not a withdrawal.
         for (const slot of slots) {
-          const answer = own[key(slot)]?.answer;
-          if (answer) [...answer].forEach((letter, i) => {
-            const coord = slot.cells[i].join(',');
-            if (!(coord in getValues())) getValues()[coord] = letter;
-          });
+          const k = key(slot), answer = completedAnswer(slot, values);
+          if (answer && answer !== own[k]?.answer) pending[k] = version(own, k);
+          words.set(k, word(slot, values));
         }
-        save();
       }
+      save();
       $('session-controls').hidden = false;
       $('solve-together').hidden = true;
       $('session-sharing').hidden = !(state.can_manage && state.invite_active);
       $('invite-link').value = state.invite_url || '';
+      setInterval(sync, 10000);
     },
-    count(slot) { return `${counts[key(slot)] || 0} משתתפים אחרים אישרו`; },
+    edited,
+    snapshot: () => ({own, pending}),
     paint(active, clueEls) {
-      for (const slot of slots) {
+      for (const slot of slots || []) {
         const badge = clueEls.get(key(slot))?.querySelector('.answer-count');
-        if (badge) badge.textContent = this.count(slot);
+        if (badge) showCount(badge, counts[key(slot)]);
       }
-      if (!active) return;
-      $('active-count').textContent = this.count(active);
-      const answer = word(active), previous = own[key(active)]?.answer;
-      $('confirm-answer').disabled = busy || !complete(answer) || previous === answer;
-      $('confirm-answer').textContent = previous && previous !== answer ? 'אישור התשובה החדשה' : 'אישור התשובה';
-      $('confirmation-state').textContent = previous === answer ? 'התשובה אושרה' : previous ? 'שינויים מקומיים שטרם אושרו' : 'טרם אושרה תשובה';
+      if (active) showCount($('active-count'), counts[key(active)]);
     },
-    async confirm(slot) {
-      if (!complete(word(slot))) return;
-      if (await send([change(slot, word(slot))])) message('התשובה אושרה.');
-    },
-    guard() {
-      if (!dirty().length) return Promise.resolve(true);
-      if (dialogResolve) return Promise.resolve(false);
-      renderDecisions();
-      dialog.showModal();
-      return new Promise(resolve => { dialogResolve = resolve; });
-    },
-    hasPending: () => getValues && dirty().length > 0,
     async revoke() {
       try {
         await sessionApi(`${id}/revoke/`, {method: 'POST'});
         $('session-sharing').hidden = true;
         message('קישור ההצטרפות בוטל. המשתתפים הקיימים נשארו במפגש.');
       } catch (e) { message(e.message); }
-    },
-    dispose() { disposed = true; clearInterval(timer); document.removeEventListener('visibilitychange', poll); }
+    }
   };
 }

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>higayon · תרגול בשניים</title>
+<style>
+  * { box-sizing: border-box; }
+  body { color: #202020; background: #f5f4f1; margin: 0; font: 1rem/1.5 system-ui, sans-serif; }
+  main { max-width: 1600px; margin: auto; padding: 1rem clamp(.75rem, 2vw, 2rem); }
+  h1, h2, p { margin: 0; }
+  h1, h2 { font-family: Georgia, serif; }
+  h1 { font-size: 1.6rem; }
+  .players { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
+  .heading { display: flex; justify-content: space-between; align-items: center; padding: .4rem 0; }
+  a { color: inherit; text-underline-offset: .2em; }
+  iframe { display: block; width: 100%; height: 75vh; background: white; border: 1px solid #888; }
+  @media (max-width: 680px) { .players { grid-template-columns: 1fr; } iframe { height: 65vh; } }
+</style>
+<main>
+  <h1>תרגול פתרון בשניים</h1>
+  <p>הדביקו <strong>אבגדהוז</strong> ב־1 מאוזן אצל נועה. סימן ירוק יופיע מיד, והמונה אצל עמית יתעדכן אחרי הסנכרון בשני הלוחות.</p>
+  <div class="players">
+    {% for player in players %}<section>
+      <div class="heading"><h2>{{ player.name }}</h2><a href="{{ player.url }}" target="_blank" rel="noopener" aria-label="פתיחת הלוח של {{ player.name }} בלשונית חדשה">פתיחה בלשונית חדשה ↗</a></div>
+      <iframe src="{{ player.url }}" title="הלוח של {{ player.name }}"></iframe>
+    </section>{% endfor %}
+  </div>
+</main>
+</html>

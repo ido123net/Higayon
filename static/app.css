@@ -10,133 +10,118 @@ body {
   line-height: 1.6
 }
 
+header, main {
+  width: min(1120px, calc(100% - 2 * clamp(16px, 4vw, 40px)));
+  margin-inline: auto;
+}
+
 header {
-  border-bottom: 2px solid #191919;
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
-  padding: 14px max(16px, calc((100vw - 1120px)/2));
-}
-
-.site-menu {
-  position: relative;
-  margin-inline-start: auto;
-  align-self: center
-}
-
-.site-menu summary {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 8px;
-  cursor: pointer;
-  list-style: none
-}
-
-.site-menu summary::-webkit-details-marker {
-  display: none
-}
-
-.menu-panel {
-  position: absolute;
-  top: calc(100% + 8px);
-  inset-inline-end: 0;
-  z-index: 10;
-  width: min(320px, calc(100vw - 24px));
-  display: grid;
-  gap: 12px;
-  padding: 20px;
-  background: #fff;
-  border: 1px solid #c6cfcc;
-  border-radius: 3px;
-  box-shadow: 0 8px 24px #0002
-}
-
-.menu-panel select {
-  width: 100%;
-  min-width: 0
-}
-
-.menu-panel a {
-  display: flex;
-  align-items: center;
-  min-height: 44px
-}
-
-.menu-panel form {
-  border-top: 1px solid #e7e7e7;
-  padding-top: 12px;
-  margin: 0
+  justify-content: space-between;
+  padding-block: 12px 9px;
+  border-bottom: 2px solid #161616;
 }
 
 .brand {
-  font: bold 30px Georgia, serif;
+  color: #101010;
+  font: bold clamp(36px, 5vw, 54px)/1 Georgia, serif;
+  letter-spacing: -.055em;
   text-decoration: none;
-  color: inherit
 }
 
-main {
-  max-width: 1120px;
-  margin: auto;
-  padding: 16px
+main { padding-block: 12px 36px; }
+
+h1, h2, .active-clue {
+  font-family: "Noto Serif Hebrew", "Times New Roman", serif;
 }
 
-h1 {
-  font-size: 28px;
-  margin: 16px 0 6px
-}
-
-h2 {
-  font-size: 21px;
-  border-bottom: 2px solid;
-  margin: 0 0 8px
-}
-
-a {
-  color: #285d64
-}
-
-button,
-select,
-input,
-textarea {
-  font: inherit
-}
-
-button,
-select {
+h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.16; margin: 6px 0 12px; }
+h2 { font-size: 24px; line-height: 1.3; margin: 0 0 8px; }
+a { color: inherit; }
+button, select, input, textarea { font: inherit; }
+button, select {
   min-height: 44px;
+  color: inherit;
   background: white;
   border: 1px solid #aaa;
+  border-radius: 4px;
   padding: 6px 12px;
-  border-radius: 3px;
-  color: inherit
 }
-
-button,
-a,
-select {
-  cursor: pointer
+button, a, select { cursor: pointer; }
+button:hover { background: #f2f2f2; }
+:focus-visible { outline: 2px solid #111; outline-offset: 2px; }
+.primary, .menu-primary { color: white; background: #141414; border-color: #141414; }
+.primary:hover, .menu-primary:hover { background: #333; }
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
 }
-
-button:hover {
-  background: #f0f3f2
+.menu-icon { flex: none; }
+body:has(#site-menu[open]) { overflow: hidden; }
+#site-menu {
+  color: #181818;
+  background: white;
+  position: fixed;
+  inset: auto 0 0;
+  margin: 0 auto;
+  padding: 12px 22px max(18px, env(safe-area-inset-bottom));
+  border: 0;
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: 90dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
-
-:focus-visible {
-  outline: 3px solid #367780;
-  outline-offset: 2px
+#site-menu::backdrop { background: rgb(0 0 0 / 45%); }
+#site-menu::before {
+  content: "";
+  display: block;
+  width: 38px;
+  height: 4px;
+  border-radius: 4px;
+  margin: 0 auto 12px;
+  background: #aaa;
 }
-
-.primary {
-  background: #193f43;
-  color: #fff;
-  border-color: #193f43
+.drawer-heading, .menu-row, .menu-primary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
-
-.primary:hover {
-  background: #2d5c60
+.drawer-heading { justify-content: space-between; margin-bottom: 12px; }
+.drawer-heading h2 { font-size: 30px; margin: 0; }
+.menu-primary { width: 100%; justify-content: center; min-height: 50px; font-weight: bold; }
+.menu-row {
+  position: relative;
+  width: 100%;
+  border: none;
+  min-height: 52px;
+  padding: 8px 4px;
+  text-decoration: none;
+  text-align: start;
+}
+.menu-row:hover, .menu-row:focus-within { background: #f4f4f4; }
+.puzzle-picker { margin-block: 4px; }
+.puzzle-picker:focus-within { outline: 2px solid; }
+.puzzle-picker select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; }
+.picker-chevron { width: 9px; height: 9px; margin-inline-start: auto; margin-inline-end: 8px; border: solid; border-width: 0 0 1.5px 1.5px; transform: rotate(45deg); }
+.owner-actions, .menu-panel form { border-top: 1px solid #ccc; padding-top: 5px; }
+.owner-actions { padding-bottom: 5px; }
+.logout { color: #555; }
+@media (min-width: 761px) {
+  #site-menu {
+    inset: 72px auto auto max(24px, calc((100vw - 1120px) / 2));
+    width: 360px;
+    border-radius: 8px;
+    padding: 20px;
+    max-height: calc(100dvh - 90px);
+  }
+  #site-menu::before { display: none; }
 }
 
 .toolbar {
@@ -174,23 +159,55 @@ html {
 }
 
 .active-clue-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  anchor-name: --clue-bar;
   position: sticky;
   top: var(--viewport-top, 0px);
   z-index: 5;
   margin-bottom: 16px;
   background: #fff;
-  border: 1px solid #c6cfcc;
-  border-inline-start: 3px solid #285d64;
-  box-shadow: 0 2px 6px #0001
+  border-block: 1px solid #171717;
+  min-height: 52px;
 }
 
 .active-clue {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 8px;
   margin: 0;
-  min-height: 60px;
-  padding: 12px 16px;
-  font-size: 18px;
-  font-weight: bold;
-  overflow-wrap: anywhere
+  font-size: clamp(20px, 2.2vw, 24px);
+  line-height: 1.35;
+}
+.clue-direction { flex: none; white-space: nowrap; font: bold 16px/1.3 Arial, sans-serif; }
+.clue-text {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: start;
+}
+.clue-text:hover { background: transparent; }
+.full-clue {
+  max-width: min(36rem, 92vw);
+  max-height: 40dvh;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 10px 14px;
+  border: 1px solid #555;
+  font: 20px/1.5 "Noto Serif Hebrew", "Times New Roman", serif;
+}
+@supports (top: anchor(bottom)) {
+  .full-clue {
+    position-anchor: --clue-bar;
+    inset: anchor(bottom) anchor(right) auto anchor(left);
+    margin: 4px 0 0 auto;
+  }
 }
 
 .board {
@@ -232,12 +249,12 @@ html {
 }
 
 .cell.selected {
-  background: #e5eeeb
+  background: #eee
 }
 
 .cell.active {
-  background: #b9d5cf;
-  box-shadow: inset 0 0 0 2px #285d64
+  background: #eee;
+  box-shadow: inset 0 0 0 2px #111
 }
 
 .number {
@@ -267,9 +284,12 @@ html {
 .clues {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  padding-top: 8px
+  gap: 16px;
+  border-top: 2px solid #171717;
+  padding-top: 10px
 }
+
+ .clues > div + div { border-inline-start: 1px solid #ccc; padding-inline-start: 14px; }
 
 ol {
   list-style: none;
@@ -294,8 +314,8 @@ li {
 }
 
 .clue.selected {
-  background: #e5eeeb;
-  border-inline-start: 3px solid #285d64
+  background: #eee;
+  border-inline-start: 3px solid #111
 }
 
 .enumeration {
@@ -315,7 +335,7 @@ li {
 }
 
 .eyebrow {
-  color: #476c66
+  color: #555
 }
 
 .editor-fields {
@@ -360,7 +380,7 @@ fieldset label {
 }
 
 #status {
-  color: #70400b
+  color: #393939
 }
 
 #editor>label input {
@@ -368,18 +388,6 @@ fieldset label {
 }
 
 @media(max-width:760px) {
-  header {
-    padding: 10px 16px
-  }
-
-  header span {
-    font-size: 13px
-  }
-
-  main {
-    padding: 12px
-  }
-
   .workspace {
     display: block
   }
@@ -387,12 +395,6 @@ fieldset label {
   .board-panel {
     max-width: 540px;
     margin: auto
-  }
-
-  .active-clue {
-    min-height: 54px;
-    padding: 10px 12px;
-    font-size: 16px
   }
 
   .clues {
@@ -404,9 +406,7 @@ fieldset label {
     display: block
   }
 
-  h1 {
-    font-size: 23px
-  }
+
 
   .caption {
     margin: 6px 0
@@ -423,14 +423,54 @@ fieldset label {
   }
 }
 
-#session-controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding-block: .35rem; }
+#session-controls { display: flex; align-items: center; gap: 4px; flex: none; }
 #session-controls[hidden], #session-sharing[hidden] { display: none; }
-#confirmation-state, .answer-count { font-size: .8rem; color: #555; }
-.answer-count { display: block; font-weight: normal; }
+/* Both the fill and the check use the same SVG coordinates at every size. */
+.completion-mark {
+  display: inline-flex;
+  vertical-align: middle;
+  color: #416a55;
+}
+.completion-mark svg { display: block; width: 16px; height: 16px; }
+.clue .completion-mark { margin-inline-start: .35em; }
+.clue.completed { background: #f2f6f2; }
+.clue.completed.selected { background: #e2ece3; border-inline-start-color: #416a55; }
+.active-clue-bar:has(#completion-mark:not([hidden])) { border-bottom-color: #75937f; }
+#sync-status { margin: 0 0 8px; font-size: .88rem; }
+.answer-count {
+  font-size: .85rem;
+  color: #555;
+  display: inline-flex;
+  align-items: center;
+  gap: .25em;
+  font-weight: normal;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.answer-count svg { width: 1.15em; height: 1.15em; }
+.clue .answer-count { margin-inline-start: .45em; }
 #session-sharing { display: grid; gap: .5rem; }
 #invite-link { direction: ltr; min-width: 0; width: 100%; box-sizing: border-box; }
-#answer-decisions { max-width: min(90vw, 34rem); max-height: 80dvh; overflow: auto; border: 1px solid #555; border-radius: .5rem; padding: 1rem; }
-#answer-decisions::backdrop { background: #0008; }
-.decision-row { display: grid; gap: .5rem; margin-block: 1rem; }
-.decision-row select { min-height: 44px; max-width: 100%; }
-#decision-error { color: #a11; }
+@media (min-width: 761px) {
+  body:has(.workspace) {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+  }
+  body:has(.workspace) header { flex: none; }
+  main:has(.workspace) {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    padding-bottom: 12px;
+  }
+  .active-clue-bar { flex: none; }
+  .workspace { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+  .board-panel { position: static; height: 100%; container-type: size; }
+  .board { width: min(100cqw, calc(100cqh - 4rem), 540px); }
+  .clues { height: 100%; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+}
+
+[hidden] { display: none !important; }

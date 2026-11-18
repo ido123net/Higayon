@@ -1,4 +1,4 @@
-import {sessionApi, sharedSession} from "./sessions.js";
+import {sessionApi, sharedSession, completedAnswer} from "./sessions.js";
 import {
   api,
   date,
@@ -31,6 +31,32 @@ const message = text => {
 
 if (sessionId) shared = sharedSession(sessionId, message);
 
+const fullClue = document.createElement("div");
+fullClue.className = "full-clue";
+fullClue.popover = "auto";
+document.querySelector(".active-clue-bar").append(fullClue);
+
+// Rebuild the clue only when the selection changes, so typing and polling keep its focus.
+function showClue(slot) {
+  const clue = puzzle.clues.find(c => key(c) === key(slot));
+  const across = slot.direction === "across";
+  const direction = document.createElement("strong");
+  direction.className = "clue-direction";
+  direction.setAttribute("role", "img");
+  direction.setAttribute("aria-label", `${slot.number} ${across ? "מאוזן" : "מאונך"}`);
+  direction.textContent = `${slot.number} ${across ? "←" : "↓"}`;
+
+  const text = document.createElement("button");
+  text.type = "button";
+  text.className = "clue-text";
+  text.append(clue.text + " ", enumeration(clue, slot.length));
+  fullClue.hidePopover();
+  fullClue.replaceChildren(clue.text + " ", enumeration(clue, slot.length));
+  text.popoverTargetElement = fullClue;
+  text.title = text.textContent;
+  $("active-clue").replaceChildren(direction, text);
+}
+
 function paint() {
   for (const [coord, el] of cellEls) {
     el.querySelector(".letter").textContent = values[coord] || "";
@@ -39,10 +65,16 @@ function paint() {
     el.tabIndex = active && active.cells[index].join(",") === coord ? 0 : -1;
     el.setAttribute("aria-label", `שורה ${+coord.split(",")[0]+1}, עמודה ${+coord.split(",")[1]+1}, ${values[coord] || "ריק"}`);
   }
-  for (const [id, el] of clueEls) el.classList.toggle("selected", !!active && key(active) === id);
+  for (const slot of puzzle?.template.slots || []) {
+    const el = clueEls.get(key(slot));
+    if (!el) continue;
+    const done = Boolean(completedAnswer(slot, values));
+    el.classList.toggle("selected", slot === active);
+    el.classList.toggle("completed", done);
+    el.querySelector(".completion-mark").hidden = !done;
+  }
+  $("completion-mark").hidden = !active || !completedAnswer(active, values);
   if (active) {
-    const clue = puzzle.clues.find(c => key(c) === key(active));
-    $("active-clue").replaceChildren(`${active.number} ${active.direction==="across"?"מאוזן":"מאונך"} · ${clue.text} `, enumeration(clue, active.length));
     input.setAttribute("aria-label", `הזנת אות · ${active.number} ${active.direction==="across"?"מאוזן":"מאונך"} · אות ${index+1} מתוך ${active.length}`);
     const cell = cellEls.get(active.cells[index].join(","));
     input.style.top = `${cell.offsetTop}px`;
@@ -51,8 +83,8 @@ function paint() {
   shared?.paint(active, clueEls);
 }
 
-async function select(slot, at = 0, focus = true) {
-  if (active && key(active) !== key(slot) && shared && !await shared.guard()) return;
+function select(slot, at = 0, focus = true) {
+  if (active !== slot) showClue(slot);
   active = slot;
   index = at;
   paint();
@@ -62,7 +94,8 @@ async function select(slot, at = 0, focus = true) {
 }
 
 function persist() {
-  store.save(values);
+  shared?.edited();
+  store.save(values, shared?.snapshot());
   paint();
 }
 
@@ -111,9 +144,12 @@ function draw() {
       button.className = "clue";
       button.append(`${slot.number}. ${clue.text} `, enumeration(clue, slot.length));
       button.addEventListener("click", () => select(slot));
+      const mark = $("completion-mark").cloneNode(true);
+      mark.removeAttribute("id");
+      button.append(mark);
       if (shared) {
-        const badge = document.createElement("small");
-        badge.className = "answer-count";
+        const badge = $("active-count").cloneNode(true);
+        badge.removeAttribute("id");
         button.append(badge);
       }
       li.append(button);
@@ -155,9 +191,12 @@ async function load(id = "latest") {
     const hasDraft = store.has();
     values = store.load();
     active = null;
-    if (shared) shared.attach(puzzle.template.slots, () => values, persist, paint, hasDraft);
+    if (shared) {
+      shared.attach(puzzle.template.slots, values, store.syncState, hasDraft, () => {
+        store.save(values, shared.snapshot());
+      }, paint);
+    }
     draw();
-    if (shared) void shared.guard();
   } catch (e) {
     if (current !== generation) return;
     if (puzzle) {
@@ -181,7 +220,6 @@ function viewport() {
   document.documentElement.style.setProperty("--viewport-top", `${window.visualViewport?.offsetTop || 0}px`);
 }
 input.addEventListener("focus", viewport);
-// Long clues can wrap: keep the sticky desktop board below the whole clue bar.
 new ResizeObserver(([entry]) => {
   document.documentElement.style.setProperty("--active-clue-height", `${entry.target.getBoundingClientRect().height}px`);
 }).observe(document.querySelector(".active-clue-bar"));
@@ -246,13 +284,12 @@ input.addEventListener("keydown", e => {
 });
 $("puzzles").addEventListener("change", async e => {
   const target = e.target.value;
+  $("site-menu").close();
   if (shared) {
     e.target.value = puzzle.id;
-    if (await shared.guard()) location.assign(`/?puzzle=${encodeURIComponent(target)}`);
+    location.assign(`/?puzzle=${encodeURIComponent(target)}`);
     return;
   }
-  document.querySelector(".site-menu").open = false;
-  document.querySelector(".site-menu summary").focus({preventScroll: true});
   load(e.target.value);
 });
 try {
@@ -271,34 +308,18 @@ try {
   message(e.message);
 }
 
-$("confirm-answer").addEventListener("click", () => { if (shared && active) void shared.confirm(active); });
 $("solve-together").addEventListener("click", async () => {
   if (!puzzle || loading) return;
   $("solve-together").disabled = true;
   try {
     const session = await sessionApi("", {method: "POST", body: JSON.stringify({puzzle_id: puzzle.id})});
     location.assign(`/sessions/${session.id}/`);
-  } catch (e) { message(e.message); $("solve-together").disabled = false; }
+  } catch (e) { $("site-menu").close(); message(e.message); $("solve-together").disabled = false; }
 });
 $("copy-invite").addEventListener("click", async () => {
-  try { await navigator.clipboard.writeText($("invite-link").value); message("הקישור הועתק."); }
+  try { await navigator.clipboard.writeText($("invite-link").value); $("site-menu").close(); message("הקישור הועתק."); }
   catch { $("invite-link").select(); message("אפשר להעתיק את הקישור מהשדה המסומן."); }
 });
 $("revoke-invite").addEventListener("click", () => {
-  if (window.confirm("לבטל את קישור ההצטרפות? משתתפים קיימים יישארו במפגש.")) void shared?.revoke();
-});
-document.addEventListener("click", async e => {
-  const link = e.target.closest("a[href]");
-  if (!shared?.hasPending() || !link || e.defaultPrevented || link.target === "_blank") return;
-  e.preventDefault();
-  if (await shared.guard()) location.assign(link.href);
-});
-let approvedSubmit = false;
-document.addEventListener("submit", async e => {
-  if (!shared?.hasPending() || approvedSubmit) return;
-  e.preventDefault();
-  if (await shared.guard()) { approvedSubmit = true; e.target.requestSubmit(); approvedSubmit = false; }
-});
-window.addEventListener("beforeunload", e => {
-  if (shared?.hasPending()) { e.preventDefault(); e.returnValue = ""; }
+  if (window.confirm("לבטל את קישור ההצטרפות? משתתפים קיימים יישארו במפגש.")) { $("site-menu").close(); void shared?.revoke(); }
 });

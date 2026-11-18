@@ -1,5 +1,6 @@
 """Exercise sharing with two isolated browser contexts and real HTTP requests."""
 
+import json
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -30,7 +31,7 @@ from puzzles.tests import AppTests, payload
     STORAGES={"staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}},
 )
 class SharedBrowserTests(StaticLiveServerTestCase):
-    def test_explicit_confirmation_drafts_and_decisions(self):
+    def test_timed_completion_sync_and_desktop_scrolling(self):
         owner = AppTests.user("owner@example.com")
         friend = AppTests.user("friend@example.com")
         AuthorizedEmail.objects.get_or_create(email=friend.email)
@@ -64,6 +65,8 @@ class SharedBrowserTests(StaticLiveServerTestCase):
                     ]
                 )
                 page = context.new_page()
+                page.clock.install(time="2026-01-01T00:00:00Z")
+                page.clock.pause_at("2026-01-01T00:00:01Z")
                 page.on("pageerror", lambda e: errors.append(str(e)))
                 page.goto(f"{self.live_server_url}/sessions/{session.pk}/")
                 page.wait_for_selector(".clue")
@@ -79,112 +82,144 @@ class SharedBrowserTests(StaticLiveServerTestCase):
                     else None
                 ),
             )
-            page.locator("#across .clue").first.click()
-            page.locator("#entry").fill("אבגדהוז")
-            expect(page.locator("#confirm-answer")).to_be_enabled()
+
+            def tick(tab, *, write=False):
+                suffix = "/answers/" if write else f"/{session.pk}/"
+                with tab.expect_response(lambda r: r.url.endswith(suffix)):
+                    tab.clock.fast_forward(10000)
+
+            active_mark = page.locator("#completion-mark")
+            across = page.locator("#across .clue").first
+            down = page.locator("#down .clue").first
+            entry = page.locator("#entry")
+            across.click()
+            entry.fill("אב")
+            tick(page)
+            expect(active_mark).to_be_hidden()
+            self.assertEqual(writes, [])
+            entry.fill("גדהוז")
+            expect(active_mark).to_be_visible()
+            expect(across.locator(".completion-mark")).to_be_visible()
+            down.click()
+            entry.fill("אבגדה")
+            expect(active_mark).to_be_visible()
             self.assertEqual(writes, [])
             self.assertEqual(db(lambda: ConfirmedAnswer.objects.count()), 0)
-            page.locator("#confirm-answer").click()
-            expect(page.locator("#confirmation-state")).to_have_text("התשובה אושרה")
+            tick(page, write=True)
+            self.assertEqual(len(json.loads(writes[0])["changes"]), 2)
+            self.assertEqual(db(lambda: ConfirmedAnswer.objects.count()), 2)
+            tick(other)
+            for badge in (
+                other.locator("#active-count"),
+                other.locator("#across .answer-count").first,
+            ):
+                expect(badge.locator(".count-value")).to_have_text("1")
+                expect(badge).to_have_accessible_name("מספר המשתתפים האחרים שהשלימו את ההגדרה: 1")
+            self.assertFalse(any(other.locator(".letter").all_text_contents()))
+            expect(other.locator("#completion-mark")).to_be_hidden()
+            tick(page)
             self.assertEqual(len(writes), 1)
-            self.assertEqual(db(lambda: ConfirmedAnswer.objects.get().answer), "אבגדהוז")
-            # A second browser reads counts only; no letters from the first user.
-            expect(other.locator("#active-count")).to_have_text(
-                "1 משתתפים אחרים אישרו", timeout=15000
-            )
-            self.assertTrue(
-                all(not letter for letter in other.locator(".letter").all_text_contents())
-            )
-            # Edits stay local and blocking decisions can restore without a write.
-            page.locator("#across .clue").first.click()
-            page.locator("#entry").fill("זוהדגבא")
-            page.locator("#down .clue").first.click()
-            expect(page.locator("#answer-decisions")).to_be_visible()
-            self.assertEqual(len(writes), 1)
-            page.locator("#decision-list select").select_option("restore")
-            page.locator("#decisions-apply").click()
-            expect(page.locator("#answer-decisions")).not_to_be_visible()
-            self.assertEqual(len(writes), 1)
-            self.assertEqual(page.locator(".cell").nth(10).locator(".letter").inner_text(), "א")
-            # Deletion, refresh, and explicit withdrawal preserve local empty cells.
-            page.locator("#across .clue").first.click()
-            page.locator("#entry").press("Delete")
+
+            # A deletion at the intersection withdraws both clues, even across reload.
+            across.click()
+            entry.press("Delete")
+            expect(across.locator(".completion-mark")).to_be_hidden()
+            expect(down.locator(".completion-mark")).to_be_hidden()
             page.reload()
-            expect(page.locator("#answer-decisions")).to_be_visible()
+            page.wait_for_selector(".clue")
             self.assertEqual(len(writes), 1)
-            page.locator("#decision-list select").select_option("submit")
-            page.locator("#decisions-apply").click()
-            expect(page.locator("#answer-decisions")).not_to_be_visible()
-            self.assertEqual(db(lambda: ConfirmedAnswer.objects.get().answer), "")
-            self.assertEqual(len(writes), 2)
-            # Failed writes preserve the draft and require an explicit retry.
-            page.locator("#across .clue").first.click()
-            page.locator("#entry").fill("אבגדהוז")
+            tick(page, write=True)
+            self.assertEqual([c["answer"] for c in json.loads(writes[-1])["changes"]], [None, None])
+            tick(other)
+            expect(other.locator("#active-count .count-value")).to_have_text("0")
+
+            # Network failure leaves the batch queued. Retry the latest revision.
+            across.click()
+            entry.fill("ז")
             answer_url = f"**/api/v1/sessions/{session.pk}/answers/"
             page.route(answer_url, lambda route: route.abort())
-            page.locator("#confirm-answer").click()
-            expect(page.locator("#status")).to_contain_text("אין חיבור")
-            self.assertEqual(db(lambda: ConfirmedAnswer.objects.get().answer), "")
+            page.clock.fast_forward(10000)
+            expect(page.locator("#sync-status")).to_contain_text("אין חיבור")
             page.unroute(answer_url)
-            page.locator("#confirm-answer").click()
-            expect(page.locator("#confirmation-state")).to_have_text("התשובה אושרה")
-            # Crossing letters affect both confirmed clues and require two decisions.
-            page.locator("#down .clue").first.click()
-            page.locator("#entry").fill("אבגדה")
-            page.locator("#confirm-answer").click()
-            expect(page.locator("#confirmation-state")).to_have_text("התשובה אושרה")
-            page.locator("#entry").press("Home")
-            page.locator("#entry").fill("ז")
-            page.locator("#across .clue").nth(1).click()
-            expect(page.locator("#decision-list select")).to_have_count(2)
-            page.locator("#decisions-cancel").click()
-            expect(page.locator("#answer-decisions")).not_to_be_visible()
-            page.locator("#across .clue").nth(1).click()
-            for select in page.locator("#decision-list select").all():
-                select.select_option("submit")
-            page.locator("#decisions-apply").click()
-            expect(page.locator("#answer-decisions")).not_to_be_visible()
+            across.click()
+            entry.fill("ח")
+            expect(active_mark).to_be_visible()
+            tick(page, write=True)
+            expect(page.locator("#sync-status")).to_be_hidden()
             self.assertEqual(
-                db(
-                    lambda: list(
-                        ConfirmedAnswer.objects.order_by("direction").values_list(
-                            "answer", flat=True
-                        )
-                    )
-                ),
-                ["זבגדהוז", "זבגדה"],
+                db(lambda: ConfirmedAnswer.objects.get(direction="across").answer), "חבגדהוז"
             )
-            # A stale version is rejected without losing the local draft.
-            page.locator("#across .clue").first.click()
-            page.locator("#entry").fill("אבגדהוז")
-            db(lambda: ConfirmedAnswer.objects.filter(direction="across").update(version=99))
-            page.locator("#confirm-answer").click()
-            expect(page.locator("#status")).to_contain_text("מכשיר אחר")
-            self.assertEqual(page.locator(".cell").nth(10).locator(".letter").inner_text(), "א")
-            page.locator("#confirm-answer").click()
-            expect(page.locator("#confirmation-state")).to_have_text("התשובה אושרה")
+
+            # A newer remote version cannot be overwritten by a stale queued edit.
+            across.click()
+            entry.fill("ת")
+            db(
+                lambda: ConfirmedAnswer.objects.filter(direction="across").update(
+                    answer="שבגדהוז", version=99
+                )
+            )
+            tick(page)
+            expect(page.locator("#sync-status")).to_contain_text("מכשיר אחר")
+            self.assertEqual(
+                db(lambda: ConfirmedAnswer.objects.get(direction="across").version), 99
+            )
+            across.click()
+            entry.fill("ל")
+            tick(page, write=True)
+            expect(page.locator("#sync-status")).to_be_hidden()
             self.assertEqual(
                 db(lambda: ConfirmedAnswer.objects.get(direction="across").version), 100
             )
+            # An edit made while a batch is in flight belongs to the following tick.
+            held = []
+            page.route(answer_url, lambda route: held.append(route))
+            across.click()
+            entry.fill("ק")
+            with page.expect_request(lambda request: request.url.endswith("/answers/")):
+                page.clock.fast_forward(10000)
+            across.click()
+            entry.fill("ר")
+            with page.expect_response(lambda response: response.url.endswith("/answers/")):
+                held[0].continue_()
+            page.unroute(answer_url)
+            tick(page, write=True)
+            self.assertEqual(
+                db(lambda: ConfirmedAnswer.objects.get(direction="across").answer), "רבגדהוז"
+            )
+            # Read another device's update into unchanged cells without an echo write.
+            db(
+                lambda: ConfirmedAnswer.objects.filter(direction="across").update(
+                    answer="רבגדהוח", version=110
+                )
+            )
+            write_count = len(writes)
+            tick(page)
+            expect(page.locator(".cell").nth(4).locator(".letter")).to_have_text("ח")
+            self.assertEqual(len(writes), write_count)
             self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
             Path("/tmp/higayon-qa").mkdir(exist_ok=True)
             page.screenshot(path="/tmp/higayon-qa/shared-phone.png", full_page=True)
-            page.set_viewport_size({"width": 1280, "height": 900})
-            self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
-            page.wait_for_timeout(150)
+            page.set_viewport_size({"width": 1280, "height": 700})
+            clues = page.locator(".clues")
+            board = page.locator("#board")
+            before = board.bounding_box()
+            clues.evaluate("el => { el.scrollTop = el.scrollHeight; }")
+            self.assertGreater(clues.evaluate("el => el.scrollTop"), 0)
+            self.assertEqual(board.bounding_box(), before)
+            self.assertTrue(page.evaluate("document.documentElement.scrollHeight <= innerHeight"))
             page.screenshot(path="/tmp/higayon-qa/shared-desktop.png")
             # A new session for the same puzzle starts with a separate draft.
             fresh = contexts[0].new_page()
             fresh.goto(self.live_server_url)
             fresh.wait_for_selector(".clue")
-            fresh.locator(".site-menu summary").click()
+            fresh.locator("#open-menu").click()
             fresh.locator("#solve-together").click()
             fresh.wait_for_url("**/sessions/*/")
             fresh.wait_for_selector(".clue")
             self.assertTrue(
                 all(not letter for letter in fresh.locator(".letter").all_text_contents())
             )
-            fresh.locator(".site-menu summary").click()
+            fresh.locator("#open-menu").click()
             expect(fresh.locator("#invite-link")).to_have_value(
                 self.live_server_url
                 + "/join/"

@@ -10,18 +10,23 @@
 <body>
   <header>
     <a class="brand" href="/">higayon</a>
-    <span>תשבצי היגיון</span>
     {% if user.is_authenticated %}
-      <details class="site-menu">
-        <summary><span aria-hidden="true">☰</span><span>תפריט</span></summary>
+      <button id="open-menu" class="icon-button" type="button" aria-label="פתיחת התפריט" aria-controls="site-menu" aria-haspopup="dialog">
+        {% include 'menu_icon.html' with name='menu' only %}
+      </button>
+      <dialog id="site-menu" aria-labelledby="menu-title">
+        <div class="drawer-heading">
+          <h2 id="menu-title">תפריט</h2>
+          <button class="icon-button" id="close-menu" type="button" aria-label="סגירת התפריט" autofocus>{% include 'menu_icon.html' with name='close' only %}</button>
+        </div>
         <nav class="menu-panel" aria-label="תפריט האתר">
-          {% block menu_content %}<a href="/">לפתרון התשבץ</a>{% endblock %}
+          {% block menu_content %}<a class="menu-row" href="/">לפתרון התשבץ</a>{% endblock %}
           <form method="post" action="/accounts/logout/">
             {% csrf_token %}
-            <button>יציאה</button>
+            <button class="menu-row logout" type="submit">{% include 'menu_icon.html' with name='exit' only %}יציאה</button>
           </form>
         </nav>
-      </details>
+      </dialog>
     {% endif %}
   </header>
   <main>{% block content %}{% endblock %}</main>

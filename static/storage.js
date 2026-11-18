@@ -8,22 +8,25 @@ export const normalize = text => text.replace(/[ךםןףץ]/g, c => ({
 export const letters = text => [...normalize(text)].filter(c => /^[א-ת]$/.test(c));
 export function progress(user, puzzle, cells, warning, storage = () => window.localStorage) {
   const id = `higayon:v1:${user}:${puzzle}`;
+  let syncState;
   return {
+    get syncState() { return syncState; },
     has() {
       try { return storage().getItem(id) !== null; } catch { return false; }
     },
     load() {
       try {
         const raw = JSON.parse(storage().getItem(id) || "{}");
+        syncState = raw?.sync;
         return Object.fromEntries(Object.entries(raw || {}).filter(([k, v]) => cells.has(k) && typeof v === "string" && /^[א-ת]$/.test(v)).map(([k, v]) => [k, normalize(v)]));
       } catch {
         warning("לא ניתן לקרוא שמירה בדפדפן. ההתקדמות זמינה כרגע בדף בלבד.");
         return {};
       }
     },
-    save(value) {
+    save(value, sync) {
       try {
-        storage().setItem(id, JSON.stringify(value));
+        storage().setItem(id, JSON.stringify(sync ? {...value, sync} : value));
       } catch {
         warning("לא ניתן לשמור בדפדפן. ההתקדמות זמינה כרגע בדף בלבד.");
       }

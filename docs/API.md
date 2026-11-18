@@ -1,6 +1,6 @@
 # API v1
 
-Puzzle-management endpoints require an allowlisted, verified Google-backed session or the configured owner bearer token. Shared-session endpoints require a Google-backed browser session. Browser writes require Django's `csrftoken` cookie in `X-CSRFToken`; same-origin only. Bearer authorization is evaluated explicitly before session auth, uses timing-safe comparison, and does not need CSRF. A bad bearer token never falls back to a session. Tokens cannot log into pages. There are no endpoints for automatic draft-progress uploads. Shared-session endpoints below accept only explicitly confirmed answers.
+Puzzle-management endpoints require an allowlisted, verified Google-backed session or the configured owner bearer token. Shared-session endpoints require a Google-backed browser session. Browser writes require Django's `csrftoken` cookie in `X-CSRFToken`; same-origin only. Bearer authorization is evaluated explicitly before session auth, uses timing-safe comparison, and does not need CSRF. A bad bearer token never falls back to a session. Tokens cannot log into pages. There are no endpoints for automatic draft-progress uploads. Shared-session endpoints below accept complete answers and withdrawals.
 
 JSON writes use `Content-Type: application/json`. Unknown fields, malformed types, duplicate/unknown slots and incomplete clue/solution sets return `400 {"error":"Hebrew message"}`. Limits: title 200 characters; clue text 5000; request 128 KiB. Text punctuation is preserved. `enumeration` is null or a nonempty array of positive integers adding up to the fixed slot length. Group order follows the input array, displayed left to right within an isolated RTL phrase. `direction` is `across` or `down`. Numbers are integers.
 
@@ -56,8 +56,8 @@ participants. Existing puzzle-management endpoints are unchanged.
   `{"across:1":2}`, and `own` such as
   `{"across:1":{"answer":"אבגדהוז","version":1}}`. Only the creator and owner
   receive an active invitation URL. Missing counts mean zero. The browser polls
-  every ten seconds while visible; polling never writes answers or replaces drafts.
-- `POST /api/v1/sessions/{id}/answers/` explicitly submits a batch:
+  every ten seconds and sends pending changes in a separate batch on the same tick.
+- `POST /api/v1/sessions/{id}/answers/` submits a versioned batch:
 
   ```json
   {"changes":[{"direction":"across","number":1,"answer":"אבגדהוז","version":0}]}
@@ -70,8 +70,7 @@ participants. Existing puzzle-management endpoints are unchanged.
   cannot recreate an obsolete answer. Every field in each change is required.
   The batch is atomic: invalid input returns 400, version conflicts return 409
   with no writes. The client refreshes its baseline after a conflict, preserving
-  local letters, and requires another explicit decision. There is no automatic
-  upload or automatic write retry.
+  local letters, and waits for another edit to a conflicting clue. Transient failures retry on the next tick.
 - `POST /api/v1/sessions/{id}/revoke/` revokes the invitation. Only a member who
   is the creator or owner can use this endpoint; the owner can also manage
   sessions and membership through Django admin. Existing members retain access.
