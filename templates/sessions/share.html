@@ -1,0 +1,14 @@
+{% extends 'base.html' %}{% load static %}
+{% block content %}
+<section class="share-page">
+  <h1>הזמנה לפתרון משותף</h1>
+  <p>{{ session.puzzle.title }}</p>
+  {% if invite_url %}
+    <label for="share-url">כל מי שיש לו קישור יכול להצטרף לתשבץ כאורח.</label>
+    <div class="share-row"><input id="share-url" readonly dir="ltr" value="{{ invite_url }}" aria-label="קישור ההזמנה"><button type="button" class="primary" id="copy-share">העתקת קישור</button></div>
+    <p id="share-status" role="status"></p>
+    <script type="module" src="{% static 'share.js' %}"></script>
+  {% else %}<p>קישור ההצטרפות בוטל.</p>{% endif %}
+  <a href="/sessions/{{ id }}/">מעבר לתשבץ</a>
+</section>
+{% endblock %}

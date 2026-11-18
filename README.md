@@ -129,11 +129,13 @@ Configuration was checked against the official [django-allauth Google provider g
 
 ## Solve together
 
-Open a puzzle and select **לפתור ביחד** in its menu to create a session.
-Copy the session invitation link from the menu. Each friend must be authorized
-in the app and sign in with Google, then click **הצטרפות לפתרון**. Each session
-has its own personal drafts, even when several sessions use the same puzzle.
-Bookmark the session page to return later.
+Sign in with an authorized Google account and select **לפתור ביחד** in the puzzle menu.
+The group opens on a sharing screen. Select **העתקת קישור** to copy its invitation,
+or **מעבר לתשבץ** to start solving. A visitor opening the invitation can sign in
+with Google or enter a name and select **הצטרפות כאורח**. The guest membership
+belongs to that browser session. Someone using the same name in another browser
+gets an independent board. Guests can solve only groups they joined via an invitation.
+Clearing the session cookie loses access to the previous guest identity.
 
 Filling the last cell marks a clue complete immediately, including words completed by crossings.
 Every ten seconds an open session reads completion counts and the player's own saved answers,

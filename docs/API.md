@@ -1,6 +1,6 @@
 # API v1
 
-Puzzle-management endpoints require an allowlisted, verified Google-backed session or the configured owner bearer token. Shared-session endpoints require a Google-backed browser session. Browser writes require Django's `csrftoken` cookie in `X-CSRFToken`; same-origin only. Bearer authorization is evaluated explicitly before session auth, uses timing-safe comparison, and does not need CSRF. A bad bearer token never falls back to a session. Tokens cannot log into pages. There are no endpoints for automatic draft-progress uploads. Shared-session endpoints below accept complete answers and withdrawals.
+Puzzle-management endpoints require an allowlisted, verified Google-backed session or the configured owner bearer token. Creating groups requires an authorized Google account. Joined guests use their browser session for group-scoped solver requests. Browser writes require Django's `csrftoken` cookie in `X-CSRFToken`; same-origin only. Bearer authorization is evaluated explicitly before session auth, uses timing-safe comparison, and does not need CSRF. A bad bearer token never falls back to a session. Tokens cannot log into pages. There are no endpoints for automatic draft-progress uploads. Shared-session endpoints below accept complete answers and withdrawals.
 
 JSON writes use `Content-Type: application/json`. Unknown fields, malformed types, duplicate/unknown slots and incomplete clue/solution sets return `400 {"error":"Hebrew message"}`. Limits: title 200 characters; clue text 5000; request 128 KiB. Text punctuation is preserved. `enumeration` is null or a nonempty array of positive integers adding up to the fixed slot length. Group order follows the input array, displayed left to right within an isolated RTL phrase. `direction` is `across` or `down`. Numbers are integers.
 
@@ -40,7 +40,7 @@ curl --fail-with-body -X PUT -H "Authorization: Bearer $OWNER_API_TOKEN" \
 
 ## Shared solving sessions
 
-These endpoints require an authorized, active, verified Google **session**;
+Group management requires an authorized Google session. A guest can read and update only their joined group;
 the owner bearer token cannot act as a player. All writes require the standard
 CSRF token. Session reads require membership and never return other users’
 answers or names. Counts exclude the current user and unauthorized/inactive
@@ -51,7 +51,9 @@ participants. Existing puzzle-management endpoints are unchanged.
   `invite_active`, and `invite_url`.
 - `GET /join/{token}/` shows a join page without enrolling the visitor;
   a CSRF-protected form POST explicitly joins and redirects to `/sessions/{id}/`.
-  A revoked link returns 410. The solver page requires existing membership.
+  Anonymous visitors submit a trimmed name (1–80 characters) or sign in using Google. A revoked link returns 410. The solver page requires existing membership.
+- `GET /sessions/{id}/share/` shows the invitation and copy action to the creator or an owner who is a member.
+- `GET /api/v1/sessions/{id}/puzzle/` returns the group’s puzzle definition to members.
 - `GET /api/v1/sessions/{id}/` returns session metadata, `counts` such as
   `{"across:1":2}`, and `own` such as
   `{"across:1":{"answer":"אבגדהוז","version":1}}`. Only the creator and owner

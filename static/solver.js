@@ -169,7 +169,7 @@ async function load(id = "latest") {
   input.value = "";
   message("טוען תשבץ…");
   try {
-    const data = await api(`${id}/`);
+    const data = shared ? await sessionApi(`${sessionId}/puzzle/`) : await api(`${id}/`);
     if (current !== generation) return;
     if (data.puzzle === null) {
       puzzle = null;
@@ -184,7 +184,7 @@ async function load(id = "latest") {
     }
     puzzle = data;
     $("title").textContent = puzzle.title;
-    $("puzzles").value = puzzle.id;
+    if ($("puzzles")) $("puzzles").value = puzzle.id;
     const cells = new Set(puzzle.template.slots.flatMap(s => s.cells.map(c => c.join(","))));
     message("");
     store = progress(JSON.parse($("user-id").textContent), sessionId ? `session:${sessionId}` : puzzle.id, cells, message);
@@ -200,7 +200,7 @@ async function load(id = "latest") {
   } catch (e) {
     if (current !== generation) return;
     if (puzzle) {
-      $("puzzles").value = puzzle.id;
+      if ($("puzzles")) $("puzzles").value = puzzle.id;
       paint();
     } else {
       $("title").textContent = "לא ניתן לטעון תשבץ";
@@ -282,7 +282,7 @@ input.addEventListener("keydown", e => {
     if (other) select(other, other.cells.findIndex(c => c.join(",") === coord));
   }
 });
-$("puzzles").addEventListener("change", async e => {
+$("puzzles")?.addEventListener("change", async e => {
   const target = e.target.value;
   $("site-menu").close();
   if (shared) {
@@ -293,10 +293,11 @@ $("puzzles").addEventListener("change", async e => {
   load(e.target.value);
 });
 try {
-  const data = await api();
-  for (const p of data.puzzles) {
-    const o = new Option(`${p.title} · נוסף ${date(p.created_at)}`, p.id);
-    $("puzzles").add(o);
+  if ($("puzzles")) {
+    const data = await api();
+    for (const p of data.puzzles) {
+      $("puzzles").add(new Option(`${p.title} · נוסף ${date(p.created_at)}`, p.id));
+    }
   }
   if (shared) {
     const session = await shared.load();
@@ -308,18 +309,18 @@ try {
   message(e.message);
 }
 
-$("solve-together").addEventListener("click", async () => {
+$("solve-together")?.addEventListener("click", async () => {
   if (!puzzle || loading) return;
   $("solve-together").disabled = true;
   try {
     const session = await sessionApi("", {method: "POST", body: JSON.stringify({puzzle_id: puzzle.id})});
-    location.assign(`/sessions/${session.id}/`);
+    location.assign(`/sessions/${session.id}/share/`);
   } catch (e) { $("site-menu").close(); message(e.message); $("solve-together").disabled = false; }
 });
-$("copy-invite").addEventListener("click", async () => {
+$("copy-invite")?.addEventListener("click", async () => {
   try { await navigator.clipboard.writeText($("invite-link").value); $("site-menu").close(); message("הקישור הועתק."); }
   catch { $("invite-link").select(); message("אפשר להעתיק את הקישור מהשדה המסומן."); }
 });
-$("revoke-invite").addEventListener("click", () => {
+$("revoke-invite")?.addEventListener("click", () => {
   if (window.confirm("לבטל את קישור ההצטרפות? משתתפים קיימים יישארו במפגש.")) { $("site-menu").close(); void shared?.revoke(); }
 });

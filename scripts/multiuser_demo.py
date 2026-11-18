@@ -78,8 +78,10 @@ def demo_app(app, port, session_path, ticket, dashboard_html):
             def headers(status, items, exc_info=None):
                 result = []
                 for key, value in items:
-                    if key.lower() == "set-cookie" and value.startswith(SESSION_COOKIE + "="):
-                        value = cookie_name + value[len(SESSION_COOKIE) :]
+                    if key.lower() == "set-cookie":
+                        value = value.lstrip()
+                        if value.startswith(SESSION_COOKIE + "="):
+                            value = cookie_name + value[len(SESSION_COOKIE) :]
                     if key.lower() != "x-frame-options":
                         result.append((key, value))
                 result.append(("Content-Security-Policy", f"frame-ancestors {DASHBOARD}"))

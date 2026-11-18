@@ -9,6 +9,11 @@ from django.shortcuts import render
 from .models import AuthorizedEmail
 
 
+def google_configured():
+    app = settings.SOCIALACCOUNT_PROVIDERS["google"]["APPS"][0]
+    return bool(app.get("client_id") and app.get("secret"))
+
+
 def allowed(email):
     normalized = email.strip().lower() if email else ""
     return bool(

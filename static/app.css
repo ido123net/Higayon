@@ -474,3 +474,7 @@ fieldset label {
 }
 
 [hidden] { display: none !important; }
+
+.share-page { max-width: 38rem; margin: clamp(24px, 8vh, 80px) auto; }
+.share-row { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 8px 16px; }
+.share-row input { flex: 1 1 12rem; min-width: 0; }

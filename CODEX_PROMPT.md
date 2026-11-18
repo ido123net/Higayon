@@ -6,7 +6,7 @@ The requirements below reflect product decisions already made. Make sensible dec
 
 - The entire application UI must be in Hebrew and use RTL where appropriate. The product name is `higayon`.
 - This is a website for solving Hebrew cryptic crosswords, initially based on the fixed crossword layout in the newspaper's Dyokan supplement of Makor Rishon.
-- Support independent solving and optional shared sessions for a single puzzle. Authorized Google users may create invitation links and explicitly join sessions. Each participant keeps a personal local draft. Mark filled clues complete immediately. Sync changed complete answers and read other participants’ completion counts every ten seconds. Keep other participants’ names and answers private; do not add presence, WebSockets, or additional infrastructure.
+- Support independent solving and optional shared sessions for a single puzzle. Authorized Google users may create a group and land on a dedicated invitation-copy screen. An active invitation lets visitors join with Google or enter a guest name. Bind guest membership to the browser session and limit access to the joined group. Each participant keeps a personal local draft. Mark filled clues complete immediately. Sync changed complete answers and read other participants’ completion counts every ten seconds. Keep other participants’ names and answers private; do not add presence, WebSockets, or additional infrastructure.
 - Crossword definitions will be supplied manually through an API or through an owner-only editing screen that uses that same API.
 - Do not implement image uploads, OCR, image parsing, PDF import, scraping, automatic crossword generation, or AI features. Reading the supplied reference image once to verify the fixed layout is implementation preparation, not an application feature.
 - There are initially no known answers. Include an owner-only API for uploading optional solutions, but do not add answer checking, hints, or solution-reveal features to the player UI in this version.
@@ -90,8 +90,8 @@ Numbered cells use zero-based `[row, column]` coordinates, measured from the phy
 
 6. Authentication and permissions
 
-- Use Google sign-in for browser users and Django session authentication afterward.
-- Access is restricted to a configured allowlist of verified Google email addresses. Enforce it server-side for puzzle pages and API access.
+- Use Google sign-in for registered users and Django sessions for both registered users and invitation-scoped guests.
+- General puzzle and management access is restricted to a configured allowlist of verified Google email addresses. Guests may only read the puzzle and solve in a shared session they have joined. Enforce it server-side for puzzle pages and API access.
 - Configure my owner identity explicitly. Only I can add puzzles, edit definitions, or upload solutions. Invited friends can read puzzle content, solve locally, and create or join shared sessions. Session creators and the owner may revoke invitation links; existing members retain access. The owner manages session membership in Django admin.
 - Validate the Google identity through the maintained authentication integration, including verified email and normal OAuth/OIDC protections. Do not trust an email sent directly by the client or grant owner access to the first person who signs in.
 - Browser requests to the API use the existing session and normal CSRF protection for writes.

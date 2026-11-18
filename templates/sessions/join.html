@@ -1,7 +1,20 @@
 {% extends 'base.html' %}
 {% block content %}
+<section class="share-page">
 <h1>לפתור ביחד</h1>
 <p>{{ session.puzzle.title }}</p>
-<p>כל משתתף פותר בלוח האישי שלו. תשובות מלאות מסתנכרנות כל עשר שניות. שאר המשתתפים רואים כמה אנשים השלימו כל הגדרה.</p>
+<p>כל משתתף פותר בלוח האישי שלו. שאר המשתתפים רואים כמה אנשים השלימו כל הגדרה.</p>
+{% if user.is_authenticated %}
 <form method="post">{% csrf_token %}<button class="primary">הצטרפות לפתרון</button></form>
+{% else %}
+<form method="post">{% csrf_token %}
+  <label for="guest-name">השם שלך במפגש</label>
+  <div class="share-row"><input name="name" id="guest-name" autocomplete="given-name" maxlength="80" required><button class="primary">הצטרפות כאורח</button></div>
+  {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+</form>
+{% if google_configured %}
+<form method="post" action="/accounts/google/login/?next={{ request.path|urlencode }}">{% csrf_token %}<button>כניסה עם Google</button></form>
+{% else %}<p>כניסה עם Google אינה מוגדרת בסביבה הזו. אפשר להצטרף כאורח.</p>{% endif %}
+{% endif %}
+</section>
 {% endblock %}

@@ -105,7 +105,7 @@ export function sharedSession(id, message) {
     try {
       const remote = await sessionApi(`${id}/`);
       counts = remote.counts;
-      if (!remote.invite_active) $('session-sharing').hidden = true;
+      if (!remote.invite_active && $('session-sharing')) $('session-sharing').hidden = true;
       let changed = mergeOwn(remote.own);
       const changes = [];
       let conflict = false;
@@ -170,9 +170,9 @@ export function sharedSession(id, message) {
       }
       save();
       $('session-controls').hidden = false;
-      $('solve-together').hidden = true;
-      $('session-sharing').hidden = !(state.can_manage && state.invite_active);
-      $('invite-link').value = state.invite_url || '';
+      if ($('solve-together')) $('solve-together').hidden = true;
+      if ($('session-sharing')) $('session-sharing').hidden = !(state.can_manage && state.invite_active);
+      if ($('invite-link')) $('invite-link').value = state.invite_url || '';
       setInterval(sync, 10000);
     },
     edited,

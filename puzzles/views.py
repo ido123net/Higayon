@@ -9,7 +9,7 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt, csrf_protect, ensure_csrf_cookie
 
-from .auth import invited, owner
+from .auth import google_configured, invited, owner
 from .domain import Invalid, metadata, save_puzzle, save_solutions, serialize
 from .models import Puzzle
 
@@ -108,11 +108,7 @@ def login(request):
     return render(
         request,
         "login.html",
-        {
-            "google_configured": bool(
-                settings.SOCIALACCOUNT_PROVIDERS["google"]["APPS"][0]["client_id"]
-            ),
-        },
+        {"google_configured": google_configured()},
     )
 
 

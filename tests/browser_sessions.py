@@ -27,6 +27,9 @@ from puzzles.tests import AppTests, payload
     SECURE_SSL_REDIRECT=False,
     SESSION_COOKIE_SECURE=False,
     OWNER_EMAIL="owner@example.com",
+    SOCIALACCOUNT_PROVIDERS={
+        "google": {"APPS": [{"client_id": "test-client", "secret": "test-secret"}]}
+    },
     ALLOWED_HOSTS=["localhost", "127.0.0.1", "testserver"],
     STORAGES={"staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"}},
 )
@@ -214,7 +217,25 @@ class SharedBrowserTests(StaticLiveServerTestCase):
             fresh.wait_for_selector(".clue")
             fresh.locator("#open-menu").click()
             fresh.locator("#solve-together").click()
-            fresh.wait_for_url("**/sessions/*/")
+            fresh.wait_for_url("**/sessions/*/share/")
+            invite = fresh.locator("#share-url").input_value()
+            contexts[0].grant_permissions(["clipboard-read", "clipboard-write"])
+            fresh.locator("#copy-share").click()
+            expect(fresh.locator("#share-status")).to_have_text("הקישור הועתק.")
+            self.assertEqual(fresh.evaluate("navigator.clipboard.readText()"), invite)
+            guest_context = browser.new_context()
+            guest = guest_context.new_page()
+            guest.on("pageerror", lambda e: errors.append(str(e)))
+            guest.goto(invite)
+            expect(guest.get_by_role("button", name="כניסה עם Google")).to_be_visible()
+            guest.get_by_label("השם שלך במפגש").fill("נועה")
+            guest.get_by_role("button", name="הצטרפות כאורח").click()
+            guest.wait_for_selector(".clue")
+            guest.locator("#across .clue").first.click()
+            guest.locator("#entry").fill("אבגדהוז")
+            expect(guest.locator("#completion-mark")).to_be_visible()
+            expect(guest.locator("#solve-together")).to_have_count(0)
+            fresh.get_by_role("link", name="מעבר לתשבץ").click()
             fresh.wait_for_selector(".clue")
             self.assertTrue(
                 all(not letter for letter in fresh.locator(".letter").all_text_contents())

@@ -11,8 +11,8 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 
-from .auth import invited, owner
-from .domain import Invalid, normalize, object_fields
+from .auth import google_configured, invited, owner
+from .domain import Invalid, normalize, object_fields, serialize
 from .grid import LENGTHS, SLOTS
 from .models import AuthorizedEmail, ConfirmedAnswer, Puzzle, SessionMember, SolvingSession
 from .views import body, error
@@ -22,7 +22,9 @@ def member_api(view):
     @wraps(view)
     @csrf_protect
     def dispatch(request, *args, **kwargs):
-        if request.headers.get("Authorization") is not None or not invited(request.user):
+        if request.headers.get("Authorization") is not None or not (
+            invited(request.user) or guest_member_id(request, kwargs.get("session_id"))
+        ):
             return error("נדרשת כניסה באמצעות חשבון Google מורשה.", 401)
         try:
             return view(request, *args, **kwargs)
@@ -36,10 +38,18 @@ def member_api(view):
     return dispatch
 
 
-def membership(request, session_id):
-    return SessionMember.objects.select_related("session__puzzle").get(
-        session_id=session_id, user=request.user
-    )
+def guest_member_id(request, session_id):
+    if session_id and request.user.is_anonymous:
+        return request.session.get(f"guest:{session_id}")
+    return None
+
+
+def membership(request, session_id, *, lock=False):
+    members = SessionMember.objects.filter(session_id=session_id)
+    members = members.select_for_update() if lock else members.select_related("session__puzzle")
+    if request.user.is_authenticated:
+        return members.get(user=request.user)
+    return members.get(user__isnull=True, pk=guest_member_id(request, session_id))
 
 
 def session_info(request, session):
@@ -75,8 +85,6 @@ def create(request):
 
 @ensure_csrf_cookie
 def join(request, token):
-    if not invited(request.user):
-        return redirect("/accounts/google/login/?" + urlencode({"next": request.path}))
     try:
         with transaction.atomic():
             session = (
@@ -88,19 +96,39 @@ def join(request, token):
                 return render(
                     request, "message.html", {"message": "קישור ההצטרפות בוטל."}, status=410
                 )
+            context = {"session": session, "google_configured": google_configured()}
             if request.method == "POST":
-                SessionMember.objects.get_or_create(session=session, user=request.user)
+                if invited(request.user):
+                    SessionMember.objects.get_or_create(session=session, user=request.user)
+                elif request.user.is_anonymous:
+                    name = request.POST.get("name", "").strip()
+                    if not 1 <= len(name) <= 80 or "\x00" in name:
+                        return render(
+                            request,
+                            "sessions/join.html",
+                            {**context, "error": "יש להזין שם באורך של עד 80 תווים."},
+                            status=400,
+                        )
+                    member_id = guest_member_id(request, session.pk)
+                    if not SessionMember.objects.filter(
+                        pk=member_id, session=session, user__isnull=True
+                    ).exists():
+                        member = SessionMember.objects.create(session=session, guest_name=name)
+                        request.session.cycle_key()
+                        request.session[f"guest:{session.pk}"] = member.pk
+                else:
+                    return error("החשבון אינו מורשה.", 403)
                 return redirect(f"/sessions/{session.id}/")
             if request.method != "GET":
                 return error("פעולה זו אינה נתמכת.", 405)
-            return render(request, "sessions/join.html", {"session": session})
+            return render(request, "sessions/join.html", context)
     except ObjectDoesNotExist:
         return render(request, "message.html", {"message": "קישור ההצטרפות לא נמצא."}, status=404)
 
 
 @ensure_csrf_cookie
 def solver(request, session_id):
-    if not invited(request.user):
+    if not invited(request.user) and not guest_member_id(request, session_id):
         return redirect("/accounts/google/login/?" + urlencode({"next": request.path}))
     try:
         member = membership(request, session_id)
@@ -114,8 +142,29 @@ def solver(request, session_id):
         {
             "is_owner": owner(request.user),
             "session_id": str(member.session_id),
+            "participant_id": request.user.pk if member.user_id else f"guest-{member.pk}",
         },
     )
+
+
+def share(request, session_id):
+    if not invited(request.user):
+        return redirect("/login/")
+    try:
+        member = membership(request, session_id)
+    except ObjectDoesNotExist:
+        return error("המפגש לא נמצא.", 404)
+    info = session_info(request, member.session)
+    if not info["can_manage"]:
+        return error("אין הרשאה לשיתוף המפגש.", 403)
+    return render(request, "sessions/share.html", {"session": member.session, **info})
+
+
+@member_api
+def session_puzzle(request, session_id):
+    if request.method != "GET":
+        return error("פעולה זו אינה נתמכת.", 405)
+    return JsonResponse(serialize(membership(request, session_id).session.puzzle))
 
 
 @member_api
@@ -129,11 +178,19 @@ def state(request, session_id):
         answers.exclude(member=member)
         .exclude(answer="")
         .filter(
-            Q(member__user__email__in=authorized) | Q(member__user__email=settings.OWNER_EMAIL),
-            member__user__is_active=True,
-            member__user__socialaccount__provider="google",
-            member__user__emailaddress__verified=True,
-            member__user__emailaddress__email__iexact=F("member__user__email"),
+            Q(member__user__isnull=True)
+            | (
+                (
+                    Q(member__user__email__in=authorized)
+                    | Q(member__user__email=settings.OWNER_EMAIL)
+                )
+                & Q(
+                    member__user__is_active=True,
+                    member__user__socialaccount__provider="google",
+                    member__user__emailaddress__verified=True,
+                    member__user__emailaddress__email__iexact=F("member__user__email"),
+                )
+            )
         )
         .values("direction", "number")
         .annotate(count=Count("id", distinct=True))
@@ -188,9 +245,7 @@ def confirm(request, session_id):
         seen.add((d, n))
     with transaction.atomic():
         # Serialize all submissions by this member, including creation of new answers.
-        member = SessionMember.objects.select_for_update().get(
-            session_id=session_id, user=request.user
-        )
+        member = membership(request, session_id, lock=True)
         current = {
             (a.direction, a.number): a for a in ConfirmedAnswer.objects.filter(member=member)
         }

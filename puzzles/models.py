@@ -86,12 +86,25 @@ class SessionMember(models.Model):
     objects = models.Manager()
     session = models.ForeignKey(SolvingSession, on_delete=models.CASCADE, related_name="members")
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="משתתף"
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        verbose_name="משתתף",
     )
+
+    guest_name = models.CharField(max_length=80, blank=True, verbose_name="שם אורח")
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["session", "user"], name="unique_session_member")
+            models.CheckConstraint(
+                condition=(
+                    models.Q(user__isnull=False, guest_name="")
+                    | (models.Q(user__isnull=True) & ~models.Q(guest_name=""))
+                ),
+                name="session_member_identity",
+            ),
+            models.UniqueConstraint(fields=["session", "user"], name="unique_session_member"),
         ]
         verbose_name = "משתתף במפגש"
         verbose_name_plural = "משתתפים במפגש"

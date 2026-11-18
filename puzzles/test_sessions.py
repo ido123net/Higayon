@@ -62,6 +62,43 @@ class SessionTests(TestCase):
         self.assertEqual(self.client.get(f"/api/v1/sessions/{other.pk}/").status_code, 404)
         self.assertEqual(ConfirmedAnswer.objects.count(), 0)
 
+    @override_settings(
+        SOCIALACCOUNT_PROVIDERS={"google": {"APPS": [{"client_id": "", "secret": ""}]}}
+    )
+    def test_unconfigured_invitation_offers_guest_only(self):
+        guest = Client()
+        for response in (guest.get(self.join_url), guest.post(self.join_url, {"name": ""})):
+            self.assertNotContains(
+                response, "/accounts/google/login/", status_code=response.status_code
+            )
+            self.assertContains(response, "הצטרפות כאורח", status_code=response.status_code)
+
+    def test_guest_is_scoped_to_invitation_and_browser(self):
+        guest = Client()
+        self.assertContains(guest.get(self.join_url), "הצטרפות כאורח")
+        self.assertEqual(guest.post(self.join_url, {"name": " "}).status_code, 400)
+        guest.post(self.join_url, {"name": "נועה"})
+        guest.post(self.join_url, {"name": "נועה"})
+        self.assertEqual(SessionMember.objects.filter(guest_name="נועה").count(), 1)
+        self.assertEqual(guest.get(self.url + "puzzle/").status_code, 200)
+        self.assertEqual(self.submit(client=guest).status_code, 200)
+        self.assertEqual(self.client.get(self.url).json()["counts"], {"across:1": 1})
+        self.assertIsNone(guest.get(self.url).json()["invite_url"])
+        self.assertEqual(guest.post(self.url + "revoke/").status_code, 403)
+        self.assertEqual(guest.post("/api/v1/sessions/").status_code, 401)
+        self.assertEqual(guest.get("/api/v1/puzzles/").status_code, 401)
+        other = SolvingSession.objects.create(puzzle=self.puzzle, creator=self.owner)
+        self.assertEqual(guest.get(f"/api/v1/sessions/{other.pk}/puzzle/").status_code, 401)
+        second = Client()
+        second.post(self.join_url, {"name": "נועה"})
+        self.assertEqual(second.get(self.url).json()["own"], {})
+        self.client.post(self.url + "revoke/")
+        self.assertEqual(Client().post(self.join_url, {"name": "אור"}).status_code, 410)
+        self.assertEqual(guest.get(self.url).status_code, 200)
+        SessionMember.objects.filter(guest_name="נועה").delete()
+        self.assertEqual(guest.get(self.url + "puzzle/").status_code, 404)
+        self.assertEqual(self.submit(client=guest).status_code, 404)
+
     def test_counts_and_own_answers_do_not_disclose_others(self):
         self.assertEqual(self.submit("ךםןףץאב").status_code, 200)
         self.assertEqual(self.client.get(self.url).json()["counts"], {})

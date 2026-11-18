@@ -7,6 +7,8 @@ urlpatterns = [
     path("", views.home),
     path("join/<uuid:token>/", sessions.join),
     path("sessions/<uuid:session_id>/", sessions.solver),
+    path("sessions/<uuid:session_id>/share/", sessions.share),
+    path("api/v1/sessions/<uuid:session_id>/puzzle/", sessions.session_puzzle),
     path("api/v1/sessions/", sessions.create),
     path("api/v1/sessions/<uuid:session_id>/", sessions.state),
     path("api/v1/sessions/<uuid:session_id>/answers/", sessions.confirm),
