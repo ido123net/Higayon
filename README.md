@@ -178,13 +178,14 @@ during rollout or rollback. Existing open tabs continue to use the versioned API
 
 ## CI and production releases
 
-GitHub Actions runs the locked Python checks, SQLite and PostgreSQL suites, browser
-and Node tests, Terraform validation, and a container build on pull requests and
-main. A successful main push publishes an amd64 image to GHCR and stores its
-commit and immutable digest in the `release-metadata` workflow artifact for 90
-days. Configure the GHCR package as private and grant the repository permission
-to publish it. To promote an older image, retain the corresponding successful
-workflow run and artifact. Re-run the build if its metadata has expired.
+GitHub Actions scans Git history for secrets and runs the locked Python checks,
+SQLite and PostgreSQL suites, browser and Node tests, Terraform validation, and
+a container build on pull requests and main. A successful main push publishes
+a public amd64 image to GHCR and stores its commit and immutable digest in the
+`release-metadata` workflow artifact for 90 days. The build context contains
+only the application files and dependency manifests. Supply production values
+through the Kubernetes runtime Secret at deployment. To promote an older
+image, retain the corresponding successful workflow run and artifact.
 
 Production releases use the manually dispatched **Promote production** workflow
 on `main`. Enter a successful **CI and image** main-branch workflow run ID. The
@@ -205,10 +206,10 @@ A GitHub-hosted runner uses AWS OIDC and the Systems Manager session document
   higayon-github-deploy --duration=24h` to issue a token and refresh the
   environment secret before its actual expiration. The API server can cap the
   requested lifetime. A fresh token can be used for each manual promotion.
-- Create a docker-registry Secret named `higayon-ghcr` in the `higayon`
-  namespace with a classic GitHub token with `read:packages` and read access to
-  the private package. Store the token directly in the cluster Secret. Rotate
-  it by updating the Secret and testing a new image pull.
+- The public package allows anonymous image pulls. The first promotion with
+  this setup removes the old `higayon-ghcr` reference. Once it succeeds and
+  the old pods are gone, revoke the old classic token and remove the unused
+  registry Secret.
 
 ### Hand off the existing Deployment
 
@@ -225,7 +226,7 @@ environment.
 ### Release failure and rollback
 
 The workflow creates a migration Job from the live app container configuration,
-using the requested image digest and the private registry credentials. The app
+using the requested public image digest. The app
 image changes only after the Job succeeds. If a migration fails, inspect its
 logs in Actions or via `kubectl -n higayon logs job/JOB`. Fix the issue and
 trigger another promotion. Migration Jobs are retained for 24 hours.

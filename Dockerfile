@@ -5,7 +5,11 @@ ENV PYTHONUNBUFFERED=1 UV_COMPILE_BYTECODE=1 PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
-COPY . .
+COPY manage.py ./
+COPY higayon/ higayon/
+COPY puzzles/ puzzles/
+COPY static/ static/
+COPY templates/ templates/
 RUN DEBUG=true uv run --no-sync python manage.py collectstatic --noinput     && useradd --create-home app && chown -R app:app /app
 USER app
 EXPOSE 8000

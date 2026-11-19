@@ -7,13 +7,13 @@ set -euo pipefail
 [[ "$RELEASE_ID" =~ ^[0-9]{1,20}-[0-9]{1,10}$ ]]
 
 job="higayon-migrate-$RELEASE_ID"
-pull_secret=higayon-ghcr
+legacy_pull_secret=higayon-ghcr
 kube=(kubectl --namespace higayon --request-timeout=20s)
 
 # Reuse the app container settings so migrations use its database and runtime
 # configuration. A different label keeps the Job out of the app and metrics Services.
 "${kube[@]}" get deployment higayon -o json | jq -e \
-  --arg image "$RELEASE_IMAGE" --arg job "$job" --arg pull_secret "$pull_secret" '
+  --arg image "$RELEASE_IMAGE" --arg job "$job" --arg legacy_pull_secret "$legacy_pull_secret" '
   .spec.template.spec as $pod |
   ($pod.containers[] | select(.name == "app")) as $app |
   {
@@ -28,7 +28,7 @@ kube=(kubectl --namespace higayon --request-timeout=20s)
         spec: (($pod | {serviceAccountName, volumes, securityContext}
           | with_entries(select(.value != null))) + {
           restartPolicy: "Never",
-          imagePullSecrets: ((($pod.imagePullSecrets // []) + [{name: $pull_secret}]) | unique_by(.name)),
+          imagePullSecrets: (($pod.imagePullSecrets // []) | map(select(.name != $legacy_pull_secret))),
           containers: [($app
             | del(.ports, .livenessProbe, .readinessProbe, .startupProbe, .lifecycle, .args)
             | .image = $image
@@ -53,11 +53,11 @@ while true; do
   sleep 3
 done
 
-# Set both fields in one update so the new image has pull credentials at rollout.
-patch=$(jq -n --arg image "$RELEASE_IMAGE" --arg pull_secret "$pull_secret" '{
+# Remove the credential used by the original release setup while leaving other pull secrets intact.
+patch=$(jq -n --arg image "$RELEASE_IMAGE" --arg legacy_pull_secret "$legacy_pull_secret" '{
   spec: {template: {spec: {
     containers: [{name: "app", image: $image}],
-    imagePullSecrets: [{name: $pull_secret}]
+    imagePullSecrets: [{name: $legacy_pull_secret, "$patch": "delete"}]
   }}}
 }')
 "${kube[@]}" patch deployment higayon --type=strategic --patch "$patch"
