@@ -83,5 +83,7 @@ returned to zero after the browsers closed. During the test the node had 2,025
 MiB of available memory and 29 GiB of free disk. All 12 dashboard queries
 evaluated successfully. Test group data was removed after verification.
 
-The owner verified Google access through the private Grafana preview. Public
-Grafana ingress and DNS publication await a real second-account denial check.
+The owner verified Google access through the private Grafana preview and confirmed
+that a second account was denied. After that check, the Grafana ingress was enabled.
+The deployed app returns HTTP 401 for an unauthenticated dashboard API request
+and redirects Google login to the registered production callback.
