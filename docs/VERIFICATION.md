@@ -87,3 +87,8 @@ The owner verified Google access through the private Grafana preview and confirm
 that a second account was denied. After that check, the Grafana ingress was enabled.
 The deployed app returns HTTP 401 for an unauthenticated dashboard API request
 and redirects Google login to the registered production callback.
+
+Public DNS for `grafana.idofrenkel.com` resolved to the K3s node. Through that
+hostname, HTTPS validated with a Let's Encrypt certificate, the health API
+returned 200, both dashboards redirected signed-out visitors to login, and the
+dashboard API returned 401. Google sign-in used the public callback.
