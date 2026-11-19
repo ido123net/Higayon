@@ -478,3 +478,11 @@ fieldset label {
 .share-page { max-width: 38rem; margin: clamp(24px, 8vh, 80px) auto; }
 .share-row { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 8px 16px; }
 .share-row input { flex: 1 1 12rem; min-width: 0; }
+
+.group-heading { display: flex; align-items: center; gap: 1rem; }
+.group-heading h1 { flex: 1; }
+#show-roster { display: inline-flex; align-items: center; gap: .4em; border-radius: 2em; padding: .35em .7em; font-variant-numeric: tabular-nums; }
+#show-roster svg { width: 1.1em; height: 1.1em; }
+#roster { min-width: min(18rem, 80vw); border: 1px solid; padding: 1.5rem; color: inherit; }
+#roster::backdrop { background: #0005; }
+#roster ul { padding-inline-start: 1.25rem; }

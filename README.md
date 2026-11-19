@@ -1,6 +1,6 @@
 # higayon
 
-Private, Hebrew, RTL cryptic crosswords built with Django 5.2 LTS, templates and vanilla JavaScript. The canonical 11×11 Dyokan layout is code in `puzzles/grid.py`; no layout editor, import, AI, answer checking or hints. Optional shared sessions let authorized friends solve independently and share completion counts. Optional solutions stay server-side and are never sent to solvers. Draft progress stays in this browser, separated by user and puzzle or shared session. Clearing site data deletes drafts. Complete session answers sync to the server every ten seconds. Storage failures show a Hebrew notice.
+Private, Hebrew, RTL cryptic crosswords built with Django 5.2 LTS, templates and vanilla JavaScript. The canonical 11×11 Dyokan layout is code in `puzzles/grid.py`; no layout editor, import, AI, answer checking or hints. Optional shared sessions let authorized friends solve independently and share completion counts. Optional solutions stay server-side and are never sent to solvers. Draft progress stays in this browser, separated by user and puzzle or shared session. Clearing site data deletes drafts. Complete session answers sync to the server after a 250 ms typing pause. Storage failures show a Hebrew notice.
 
 ## Local startup (uv / SQLite)
 
@@ -10,7 +10,7 @@ cp .env.example .env
 # First setup only: keep your existing .env if it is already configured.
 # Edit .env, then load it explicitly for each command:
 uv run --env-file .env python manage.py migrate
-uv run --env-file .env python manage.py runserver 127.0.0.1:8765
+uv run --env-file .env uvicorn higayon.asgi:application --port 8765
 # Optional, clearly labeled synthetic puzzle:
 uv run --env-file .env python manage.py demo
 ```
@@ -22,7 +22,7 @@ Python 3.12 is pinned in `.python-version`. Use DEBUG=true only for local develo
 Run `uv run python -m scripts.multiuser_demo` and open [the local two-player demo](http://localhost:8771/).
 The page shows Noa and Amit solving the same sample puzzle side by side, with independent drafts.
 Amit has already completed 1 across. Fill that clue in Noa’s board to see its green check.
-Amit's people count updates after both boards have synced. Each board also has a link to open it in a full tab.
+Amit’s clue count updates live. The people button beside the title opens the connected-player list. Each board also has a link to open it in a full tab.
 
 The demo binds to loopback ports 8771 and 8772 and uses a temporary SQLite database and two test identities.
 Stop it with Ctrl+C and rerun the command for a fresh session. No Google credentials or `.env` file are needed.
@@ -138,13 +138,10 @@ gets an independent board. Guests can solve only groups they joined via an invit
 Clearing the session cookie loses access to the previous guest identity.
 
 Filling the last cell marks a clue complete immediately, including words completed by crossings.
-Every ten seconds an open session reads completion counts and the player's own saved answers,
-then sends changed complete answers in one versioned batch. Clearing a cell withdraws any
-affected saved answer on the next sync. Partial letters stay local. Other participants see
-counts on their next read, so their view can lag a write by one polling interval.
+After a 250 ms typing pause, the browser sends affected complete answers and withdrawals in one versioned batch. Partial letters stay local. An authenticated event stream tells group members when to refresh their own state. Each connected member appears once in the group header across their tabs. Membership and login are rechecked every 20 seconds. Lost connections expire after 60 seconds.
 
 Drafts and queued edits survive a refresh. Reopening a session resumes pending sync.
-Network failures retry on the next tick. If another device changed the same clue, the local
+Transient failures retry with backoff. If another device changed the same clue, the local
 draft is kept and a further edit is required to replace the newer answer. Independent puzzles
 save only in the browser.
 
@@ -159,3 +156,17 @@ Session HTTP endpoints and payloads are documented in [docs/API.md](docs/API.md)
 Browser verification: `uv run --env-file .env python manage.py test
 tests.browser_smoke.BrowserTests tests.browser_sessions.SharedBrowserTests`
 (requires installed Chrome).
+
+## Live solving and monitoring
+
+Run `uv run python -m tests.live_solving` to exercise the live SQLite flow. Set
+`LIVE_TEST_POSTGRES` to a disposable loopback PostgreSQL server to replay it across
+two app processes, including process loss and lease expiry. The test creates a
+uniquely named database on that server.
+
+Production runs one Uvicorn process per pod. Each process listens on a dedicated
+PostgreSQL connection. The separate internal metrics service exposes port 9091.
+Terraform supplies the Usage and Health dashboards from `monitoring/dashboards`.
+The personal infrastructure repository installs Prometheus and Grafana in the
+application namespace. Set `live_solving=false` to serve the polling browser
+during rollout or rollback. Existing open tabs continue to use the versioned API.

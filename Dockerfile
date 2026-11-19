@@ -9,4 +9,4 @@ COPY . .
 RUN DEBUG=true uv run --no-sync python manage.py collectstatic --noinput     && useradd --create-home app && chown -R app:app /app
 USER app
 EXPOSE 8000
-CMD ["gunicorn", "higayon.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--access-logfile", "-"]
+CMD ["uvicorn", "higayon.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "3", "--no-access-log"]

@@ -43,7 +43,7 @@ curl --fail-with-body -X PUT -H "Authorization: Bearer $OWNER_API_TOKEN" \
 Group management requires an authorized Google session. A guest can read and update only their joined group;
 the owner bearer token cannot act as a player. All writes require the standard
 CSRF token. Session reads require membership and never return other users’
-answers or names. Counts exclude the current user and unauthorized/inactive
+answers. The presence stream includes member display names. Counts exclude the current user and unauthorized/inactive
 participants. Existing puzzle-management endpoints are unchanged.
 
 - `POST /api/v1/sessions/` with `{"puzzle_id":"UUID"}` creates a session and
@@ -57,8 +57,10 @@ participants. Existing puzzle-management endpoints are unchanged.
 - `GET /api/v1/sessions/{id}/` returns session metadata, `counts` such as
   `{"across:1":2}`, and `own` such as
   `{"across:1":{"answer":"אבגדהוז","version":1}}`. Only the creator and owner
-  receive an active invitation URL. Missing counts mean zero. The browser polls
-  every ten seconds and sends pending changes in a separate batch on the same tick.
+  receive an active invitation URL. Missing counts mean zero. The browser reads on connection, reconnection, and state invalidation.
+- `GET /api/v1/sessions/{id}/events/` opens a membership-protected SSE stream. A `state` event
+  invalidates the personalized state above. A `presence` event contains a deduplicated list
+  of `{name, me}` objects. A `revoked` event ends the stream after access is lost.
 - `POST /api/v1/sessions/{id}/answers/` submits a versioned batch:
 
   ```json
@@ -72,7 +74,7 @@ participants. Existing puzzle-management endpoints are unchanged.
   cannot recreate an obsolete answer. Every field in each change is required.
   The batch is atomic: invalid input returns 400, version conflicts return 409
   with no writes. The client refreshes its baseline after a conflict, preserving
-  local letters, and waits for another edit to a conflicting clue. Transient failures retry on the next tick.
+  local letters, and waits for another edit to a conflicting clue. Transient failures retry with bounded backoff.
 - `POST /api/v1/sessions/{id}/revoke/` revokes the invitation. Only a member who
   is the creator or owner can use this endpoint; the owner can also manage
   sessions and membership through Django admin. Existing members retain access.

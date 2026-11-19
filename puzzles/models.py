@@ -124,3 +124,10 @@ class ConfirmedAnswer(models.Model):
                 fields=["member", "direction", "number"], name="unique_member_answer"
             )
         ]
+
+
+class ConnectionLease(models.Model):
+    objects = models.Manager()
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    member = models.ForeignKey(SessionMember, on_delete=models.CASCADE, related_name="leases")
+    expires_at = models.DateTimeField(db_index=True)

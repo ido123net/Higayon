@@ -3,7 +3,7 @@
 <section class="share-page">
 <h1>לפתור ביחד</h1>
 <p>{{ session.puzzle.title }}</p>
-<p>כל משתתף פותר בלוח האישי שלו. שאר המשתתפים רואים כמה אנשים השלימו כל הגדרה.</p>
+<p>כל משתתף פותר בלוח האישי שלו. שאר המשתתפים רואים כמה אנשים השלימו כל הגדרה. שמך יופיע ברשימת המחוברים של חברי המפגש.</p>
 {% if user.is_authenticated %}
 <form method="post">{% csrf_token %}<button class="primary">הצטרפות לפתרון</button></form>
 {% else %}

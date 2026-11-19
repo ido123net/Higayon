@@ -24,6 +24,7 @@ from puzzles.tests import AppTests, payload
 
 @override_settings(
     DEBUG=True,
+    LIVE_SOLVING=False,  # Retained compatibility with the polling client during rollout.
     SECURE_SSL_REDIRECT=False,
     SESSION_COOKIE_SECURE=False,
     OWNER_EMAIL="owner@example.com",

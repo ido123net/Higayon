@@ -6,8 +6,9 @@ dependencies = [
     "dj-database-url>=3",
     "django>=5.2,<5.3",
     "django-allauth[socialaccount]>=65",
-    "gunicorn>=23",
+    "prometheus-client>=0.26.0",
     "psycopg[binary]>=3.2",
+    "uvicorn>=0.54.0",
     "whitenoise>=6",
 ]
 
@@ -32,3 +33,5 @@ exclude = ["puzzles/migrations/"]
 [tool.ruff.lint.per-file-ignores]
 "tests/browser_smoke.py" = ["E402"] # Django must initialize before model imports.
 "tests/browser_sessions.py" = ["E402"] # Django initializes before model imports.
+
+"higayon/asgi.py" = ["E402"] # Initialize Django before importing application models.

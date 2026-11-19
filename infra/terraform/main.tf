@@ -79,6 +79,15 @@ resource "kubernetes_deployment_v1" "app" {
           name  = "app"
           image = var.image
           port { container_port = 8000 }
+          port { container_port = 9091 }
+          env {
+            name  = "METRICS_PORT"
+            value = "9091"
+          }
+          env {
+            name  = "LIVE_SOLVING"
+            value = tostring(var.live_solving)
+          }
           env_from {
             config_map_ref { name = kubernetes_config_map_v1.app.metadata[0].name }
           }
@@ -171,5 +180,32 @@ resource "kubernetes_ingress_v1" "app" {
         }
       }
     }
+  }
+}
+
+# Headless service gives Prometheus one scrape target per running app pod.
+resource "kubernetes_service_v1" "metrics" {
+  metadata {
+    name      = "higayon-metrics"
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+  }
+  spec {
+    cluster_ip = "None"
+    selector   = local.labels
+    port {
+      name        = "metrics"
+      port        = 9091
+      target_port = 9091
+    }
+  }
+}
+
+resource "kubernetes_config_map_v1" "dashboards" {
+  metadata {
+    name      = "higayon-dashboards"
+    namespace = kubernetes_namespace_v1.app.metadata[0].name
+  }
+  data = { for name in fileset("${path.module}/../../monitoring/dashboards", "*.json") :
+    name => file("${path.module}/../../monitoring/dashboards/${name}")
   }
 }

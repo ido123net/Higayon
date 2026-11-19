@@ -6,6 +6,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+LIVE_SOLVING = os.getenv("LIVE_SOLVING", "true").lower() == "true"
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
 if not SECRET_KEY:
     if not DEBUG:
@@ -60,7 +61,7 @@ TEMPLATES = [
 WSGI_APPLICATION = "higayon.wsgi.application"
 DATABASES = {
     "default": dj_database_url.config(
-        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}", conn_max_age=60
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}", conn_max_age=0
     )
 }
 if not DEBUG and DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":

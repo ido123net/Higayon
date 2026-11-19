@@ -4,27 +4,19 @@ import os
 import secrets
 from contextlib import ExitStack
 from pathlib import Path
-from socketserver import ThreadingMixIn
+from socket import create_server
 from tempfile import TemporaryDirectory
-from threading import Thread
-from wsgiref.simple_server import WSGIServer, make_server
 
 import django
+import uvicorn
 from django.conf import settings
-from django.contrib.staticfiles.handlers import StaticFilesHandler
 from django.core.management import call_command
-from django.core.wsgi import get_wsgi_application
-from django.http import HttpResponse, HttpResponseRedirect
 from django.template import Context, Template
 from django.test import Client
 
 PORTS = (8771, 8772)
 DASHBOARD = f"http://localhost:{PORTS[0]}"
 SESSION_COOKIE = "higayon_demo_session"
-
-
-class DemoServer(ThreadingMixIn, WSGIServer):
-    daemon_threads = True
 
 
 def seed():
@@ -40,6 +32,9 @@ def seed():
     call_command("migrate", verbosity=0)
     call_command("demo")
     noa, amit = (AppTests.user(f"{name}@example.invalid") for name in ("noa", "amit"))
+    for user, name in ((noa, "נועה"), (amit, "עמית")):
+        user.first_name = name
+        user.save(update_fields=["first_name"])
     session = SolvingSession.objects.create(puzzle=Puzzle.objects.get(), creator=noa)
     tickets = []
     for user in (noa, amit):
@@ -55,50 +50,58 @@ def seed():
     return f"/sessions/{session.pk}/", tickets
 
 
-def demo_app(app, port, session_path, ticket, dashboard_html):
-    # Cookies are shared across localhost ports. Give each player's cookie its own name.
-    cookie_name = f"{SESSION_COOKIE}_{port}"
-
-    def serve(environ, start_response):
-        if environ.get("HTTP_HOST") != f"localhost:{port}":
-            response = HttpResponse(status=400)
-        elif environ["PATH_INFO"] == "/" and port == PORTS[0]:
-            response = HttpResponse(dashboard_html)
-        elif environ["PATH_INFO"] == "/play/":
-            response = HttpResponseRedirect(session_path)
-            response.set_cookie(cookie_name, ticket, httponly=True, samesite="Strict")
+def demo_app(app, session_path, tickets, dashboard_html):
+    async def serve(scope, receive, send):
+        if scope["type"] != "http":
+            return await app(scope, receive, send)
+        port = scope["server"][1]
+        headers = dict(scope["headers"])
+        cookie_name = f"{SESSION_COOKIE}_{port}".encode()
+        common = [
+            (b"cache-control", b"no-store"),
+            (b"content-security-policy", f"frame-ancestors {DASHBOARD}".encode()),
+        ]
+        if headers.get(b"host") != f"localhost:{port}".encode():
+            status, content = 400, b""
+        elif scope["path"] == "/" and port == PORTS[0]:
+            status, content = 200, dashboard_html.encode()
+            common.append((b"content-type", b"text/html; charset=utf-8"))
+        elif scope["path"] == "/play/":
+            status, content = 302, b""
+            token = tickets[PORTS.index(port)].encode()
+            common += [
+                (b"location", session_path.encode()),
+                (
+                    b"set-cookie",
+                    cookie_name + b"=" + token + b"; Path=/; HttpOnly; SameSite=Strict",
+                ),
+            ]
         else:
-            cookies = environ.get("HTTP_COOKIE", "").split("; ")
-            environ["HTTP_COOKIE"] = "; ".join(
-                cookie.replace(cookie_name + "=", SESSION_COOKIE + "=", 1)
-                for cookie in cookies
-                if not cookie.startswith(SESSION_COOKIE + "=")
+            name = SESSION_COOKIE.encode() + b"="
+            cookies = headers.get(b"cookie", b"").split(b"; ")
+            headers[b"cookie"] = b"; ".join(
+                name + item[len(cookie_name) + 1 :] if item.startswith(cookie_name + b"=") else item
+                for item in cookies
+                if not item.startswith(name)
             )
 
-            def headers(status, items, exc_info=None):
-                result = []
-                for key, value in items:
-                    if key.lower() == "set-cookie":
-                        value = value.lstrip()
-                        if value.startswith(SESSION_COOKIE + "="):
-                            value = cookie_name + value[len(SESSION_COOKIE) :]
-                    if key.lower() != "x-frame-options":
-                        result.append((key, value))
-                result.append(("Content-Security-Policy", f"frame-ancestors {DASHBOARD}"))
-                return start_response(status, result, exc_info)
+            async def respond(message):
+                if message["type"] == "http.response.start":
+                    message["headers"] = [
+                        (
+                            k,
+                            cookie_name + b"=" + v[len(name) :]
+                            if k == b"set-cookie" and v.startswith(name)
+                            else v,
+                        )
+                        for k, v in message["headers"]
+                        if k != b"x-frame-options"
+                    ] + [common[1]]
+                await send(message)
 
-            return app(environ, headers)
-
-        response["Cache-Control"] = "no-store"
-        response["Content-Security-Policy"] = f"frame-ancestors {DASHBOARD}"
-        start_response(
-            f"{response.status_code} {response.reason_phrase}",
-            [
-                *response.items(),
-                *(("Set-Cookie", c.OutputString()) for c in response.cookies.values()),
-            ],
-        )
-        return [response.content]
+            return await app({**scope, "headers": list(headers.items())}, receive, respond)
+        await send({"type": "http.response.start", "status": status, "headers": common})
+        await send({"type": "http.response.body", "body": content})
 
     return serve
 
@@ -131,22 +134,14 @@ def main():
             for name, port in zip(("נועה", "עמית"), PORTS, strict=True)
         ]
         html = template.render(Context({"players": players}))
-        app = StaticFilesHandler(get_wsgi_application())
-        servers = [
-            stack.enter_context(
-                make_server(
-                    "127.0.0.1", port, demo_app(app, port, session_path, ticket, html), DemoServer
-                )
-            )
-            for port, ticket in zip(PORTS, tickets, strict=True)
-        ]
-        Thread(target=servers[1].serve_forever, daemon=True).start()
-        stack.callback(servers[1].shutdown)
+        from higayon.asgi import application
+
+        sockets = [stack.enter_context(create_server(("127.0.0.1", port))) for port in PORTS]
+        app = demo_app(application, session_path, tickets, html)
         print(f"Two-player demo running at {DASHBOARD}/", flush=True)
-        try:
-            servers[0].serve_forever()
-        except KeyboardInterrupt:
-            pass
+        uvicorn.Server(uvicorn.Config(app, access_log=False, timeout_graceful_shutdown=2)).run(
+            sockets
+        )
 
 
 if __name__ == "__main__":

@@ -43,6 +43,9 @@ function showCount(badge, count) {
 export function sharedSession(id, message) {
   let state, slots, values, save, paint, syncing = false;
   let own = {}, counts = {}, pending = {};
+  let dirty = false, writeReady = false, readNeeded = false, retryMs = 500;
+  let debounce, retry;
+  const live = Boolean(document.getElementById('show-roster'));
   const words = new Map();
   const $ = name => document.getElementById(name);
   const version = (records, k) => records[k]?.version || 0;
@@ -55,6 +58,7 @@ export function sharedSession(id, message) {
       words.set(k, text);
       if (completedAnswer(slot, values) || own[k]?.answer || k in pending) {
         pending[k] = version(own, k);
+        if (live) queueWrite();
       }
     }
   }
@@ -99,14 +103,35 @@ export function sharedSession(id, message) {
     el.hidden = !text;
   }
 
+  function queueWrite() {
+    writeReady = false;
+    clearTimeout(debounce);
+    debounce = setTimeout(() => { debounce = null; writeReady = true; sync(); }, 250);
+  }
+
+  function invalidate() {
+    readNeeded = true;
+    sync();
+  }
+
   async function sync() {
-    if (syncing) return;
+    if (syncing) { dirty = true; return; }
     syncing = true;
     try {
-      const remote = await sessionApi(`${id}/`);
-      counts = remote.counts;
-      if (!remote.invite_active && $('session-sharing')) $('session-sharing').hidden = true;
-      let changed = mergeOwn(remote.own);
+      let changed = false;
+      if (readNeeded || !live) {
+        readNeeded = false;
+        const remote = await sessionApi(`${id}/`);
+        counts = remote.counts;
+        if (!remote.invite_active && $('session-sharing')) $('session-sharing').hidden = true;
+        changed = mergeOwn(remote.own);
+        if (changed) {
+          save();
+          if (live && !debounce && Object.keys(pending).length) queueWrite();
+        }
+      }
+      if (live && !writeReady) return;
+      writeReady = false;
       const changes = [];
       let conflict = false;
       for (const slot of slots) {
@@ -123,7 +148,7 @@ export function sharedSession(id, message) {
         }
       }
       if (changed) save();
-      if (changes.length) {
+      if (!conflict && changes.length) {
         const result = await sessionApi(`${id}/answers/`, {method: 'POST', body: JSON.stringify({changes})});
         Object.assign(own, result.own);
         // Typing can continue during the request. Compare the live grid before retiring an edit.
@@ -135,18 +160,71 @@ export function sharedSession(id, message) {
         }
         save();
       }
+      retryMs = 500;
       syncMessage(conflict ? 'תשובה השתנתה במכשיר אחר. הטיוטה המקומית נשמרה. כדי לסנכרן אותה, יש לערוך את ההגדרה שוב.' : '');
     } catch (error) {
       syncMessage(error.status === 409 ? 'תשובה השתנתה במכשיר אחר. הגרסה תיבדק בסנכרון הבא.' :
-        `${error.message} הסנכרון ינסה שוב בעוד עשר שניות.`);
+        `${error.message} הטיוטה נשמרה בדפדפן.`);
+      if (live && ![401, 403, 404].includes(error.status)) {
+        clearTimeout(retry);
+        retry = setTimeout(() => {
+          writeReady = Object.keys(pending).length > 0;
+          invalidate();
+        }, retryMs);
+        retryMs = Math.min(retryMs * 2, 8000);
+      }
     } finally {
       syncing = false;
       paint();
+      if (live && dirty) { dirty = false; queueMicrotask(sync); }
     }
+  }
+
+  function startPresence(connected) {
+    const button = $('show-roster'), dialog = $('roster');
+    button.onclick = () => dialog.showModal();
+    function disconnected(text) {
+      $('presence-count').textContent = '…';
+      $('presence-status').textContent = text;
+      $('roster-names').replaceChildren();
+      button.setAttribute('aria-label', text);
+    }
+    let source;
+    function connect() {
+      source = new EventSource(`/api/v1/sessions/${id}/events/`);
+      source.addEventListener('state', () => {
+        connected();
+        if (slots) invalidate();
+        else readNeeded = true;
+      });
+      source.addEventListener('presence', event => {
+        const members = JSON.parse(event.data);
+        button.disabled = false;
+        button.setAttribute('aria-label', `מחוברים למפגש: ${members.length}`);
+        $('presence-count').textContent = members.length;
+        $('presence-status').textContent = '';
+        $('roster-names').replaceChildren(...members.map(member => {
+          const li = document.createElement('li');
+          li.textContent = member.me ? `${member.name} (אני)` : member.name;
+          return li;
+        }));
+      });
+      source.onerror = () => { disconnected('החיבור נותק, מתחבר מחדש…'); connected(); };
+      source.addEventListener('revoked', () => {
+        source.close();
+        disconnected('הגישה למפגש הסתיימה.');
+      });
+    }
+    connect();
+    window.addEventListener('pagehide', () => source.close());
+    window.addEventListener('pageshow', e => { if (e.persisted) connect(); });
+    window.addEventListener('online', () => { if (Object.keys(pending).length) queueWrite(); });
   }
 
   return {
     async load() {
+      if (live) await new Promise(startPresence);
+      readNeeded = false;
       state = await sessionApi(`${id}/`);
       counts = state.counts;
       return state;
@@ -173,7 +251,12 @@ export function sharedSession(id, message) {
       if ($('solve-together')) $('solve-together').hidden = true;
       if ($('session-sharing')) $('session-sharing').hidden = !(state.can_manage && state.invite_active);
       if ($('invite-link')) $('invite-link').value = state.invite_url || '';
-      setInterval(sync, 10000);
+      if (live) {
+        if (readNeeded) invalidate();
+        if (Object.keys(pending).length) queueWrite();
+      } else {
+        setInterval(sync, 10000);
+      }
     },
     edited,
     snapshot: () => ({own, pending}),

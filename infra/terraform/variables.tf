@@ -78,3 +78,9 @@ variable "resource_limits" {
   type    = map(string)
   default = { cpu = "1", memory = "512Mi" }
 }
+
+variable "live_solving" {
+  type        = bool
+  default     = false
+  description = "Enable the event-driven browser after checking the ASGI stream through ingress."
+}
