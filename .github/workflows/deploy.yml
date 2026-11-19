@@ -1,0 +1,137 @@
+name: Promote production
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful CI and image workflow run ID
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: higayon-production
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.verify.outputs.image }}
+    steps:
+      - name: Verify source workflow
+        id: run
+        uses: actions/github-script@v7
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+        with:
+          script: |
+            if (!/^[0-9]+$/.test(process.env.RUN_ID)) throw new Error('Invalid run ID');
+            const {data: run} = await github.rest.actions.getWorkflowRun({
+              ...context.repo, run_id: Number(process.env.RUN_ID)
+            });
+            const {data: workflow} = await github.rest.actions.getWorkflow({
+              ...context.repo, workflow_id: run.workflow_id
+            });
+            if (workflow.path !== '.github/workflows/ci.yml' || run.event !== 'push' ||
+                run.head_branch !== 'main' || run.status !== 'completed' ||
+                run.conclusion !== 'success') throw new Error('Run is not a successful main build');
+            core.setOutput('sha', run.head_sha);
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-metadata
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Validate release metadata
+        id: verify
+        env:
+          EXPECTED_COMMIT: ${{ steps.run.outputs.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          expected="ghcr.io/${REPOSITORY,,}"
+          jq -e --arg image "$expected" --arg commit "$EXPECTED_COMMIT" \
+            '.image == $image and .commit == $commit and (.digest | test("^sha256:[0-9a-f]{64}$"))' \
+            release.json > /dev/null
+          echo "image=$expected@$(jq -r .digest release.json)" >> "$GITHUB_OUTPUT"
+  deploy:
+    needs: verify
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::619220674294:role/higayon-github-deploy
+          aws-region: eu-central-1
+          role-session-name: higayon-${{ github.run_id }}-${{ github.run_attempt }}
+          role-duration-seconds: 1800
+      - name: Install Session Manager plugin
+        run: |
+          curl --fail --silent --show-error --location \
+            https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb \
+            --output "$RUNNER_TEMP/session-manager-plugin.deb"
+          sudo dpkg --install "$RUNNER_TEMP/session-manager-plugin.deb"
+      - name: Open tunnel and deploy
+        env:
+          INSTANCE_ID: i-0c66bde908bbebead
+          HIGAYON_KUBE_CA_DATA: ${{ vars.HIGAYON_KUBE_CA_DATA }}
+          HIGAYON_KUBE_TOKEN: ${{ secrets.HIGAYON_KUBE_TOKEN }}
+          RELEASE_IMAGE: ${{ needs.verify.outputs.image }}
+          RELEASE_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          : "${HIGAYON_KUBE_TOKEN:?Configure the production Kubernetes token}"
+          : "${HIGAYON_KUBE_CA_DATA:?Configure the production Kubernetes CA}"
+          umask 077
+          export KUBECONFIG
+          KUBECONFIG=$(mktemp "$RUNNER_TEMP/higayon-kubeconfig.XXXXXXXX")
+          jq -n '{
+            apiVersion: "v1", kind: "Config",
+            clusters: [{name: "k3s", cluster: {
+              server: "https://127.0.0.1:6445",
+              "certificate-authority-data": env.HIGAYON_KUBE_CA_DATA
+            }}],
+            users: [{name: "release", user: {token: env.HIGAYON_KUBE_TOKEN}}],
+            contexts: [{name: "production", context: {
+              cluster: "k3s", user: "release", namespace: "higayon"
+            }}],
+            "current-context": "production"
+          }' > "$KUBECONFIG"
+          unset HIGAYON_KUBE_TOKEN
+
+          # Session Manager prints its session ID when the tunnel starts.
+          tunnel_log=$(mktemp "$RUNNER_TEMP/higayon-tunnel.XXXXXXXX")
+          aws ssm start-session --target "$INSTANCE_ID" \
+            --document-name Higayon-K3sTunnel > "$tunnel_log" 2>&1 &
+          tunnel_pid=$!
+          # shellcheck disable=SC2329
+          end_session() {
+            local session_id
+            session_id=$(awk '/Starting session with SessionId:/ {print $NF; exit}' "$tunnel_log")
+            if [[ "$session_id" =~ ^higayon-[0-9]+-[0-9]+-[a-zA-Z0-9]+$ ]]; then
+              aws ssm terminate-session --session-id "$session_id" >/dev/null || true
+            fi
+            kill "$tunnel_pid" 2>/dev/null || true
+          }
+          trap end_session EXIT
+          for _ in {1..30}; do
+            if kubectl --request-timeout=3s -n higayon get deployment higayon -o name; then
+              bash scripts/deploy_release.sh
+              exit
+            fi
+            if ! kill -0 "$tunnel_pid" 2>/dev/null; then
+              cat "$tunnel_log" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          cat "$tunnel_log" >&2
+          echo "Timed out reaching the Higayon Deployment through Session Manager" >&2
+          exit 1

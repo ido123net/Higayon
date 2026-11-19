@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.6"
+  required_version = ">= 1.7"
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
@@ -31,112 +31,17 @@ resource "kubernetes_config_map_v1" "app" {
 locals {
   labels = { app = "higayon" }
 }
-resource "kubernetes_job_v1" "migrate" {
-  metadata {
-    name      = "higayon-migrate-${var.release}"
-    namespace = kubernetes_namespace_v1.app.metadata[0].name
-  }
-  wait_for_completion = true
-  spec {
-    backoff_limit = 3
-    template {
-      metadata { labels = local.labels }
-      spec {
-        restart_policy = "Never"
-        container {
-          name    = "migrate"
-          image   = var.image
-          command = ["python", "manage.py", "migrate", "--noinput"]
-          env_from {
-            config_map_ref { name = kubernetes_config_map_v1.app.metadata[0].name }
-          }
-          env_from {
-            secret_ref { name = var.runtime_secret_name }
-          }
-          resources {
-            requests = var.resource_requests
-            limits   = var.resource_limits
-          }
-        }
-      }
-    }
-  }
-  timeouts { create = "10m" }
+# Release ownership moves to Kubernetes. Leave the live objects in place.
+removed {
+  from = kubernetes_job_v1.migrate
+  lifecycle { destroy = false }
 }
-resource "kubernetes_deployment_v1" "app" {
-  depends_on = [kubernetes_job_v1.migrate]
-  metadata {
-    name      = "higayon"
-    namespace = kubernetes_namespace_v1.app.metadata[0].name
-  }
-  spec {
-    replicas = var.replicas
-    selector { match_labels = local.labels }
-    template {
-      metadata { labels = local.labels }
-      spec {
-        container {
-          name  = "app"
-          image = var.image
-          port { container_port = 8000 }
-          port { container_port = 9091 }
-          env {
-            name  = "METRICS_PORT"
-            value = "9091"
-          }
-          env {
-            name  = "LIVE_SOLVING"
-            value = tostring(var.live_solving)
-          }
-          env_from {
-            config_map_ref { name = kubernetes_config_map_v1.app.metadata[0].name }
-          }
-          env_from {
-            secret_ref { name = var.runtime_secret_name }
-          }
-          readiness_probe {
-            http_get {
-              path = "/health/ready/"
-              port = 8000
-              http_header {
-                name  = "X-Forwarded-Proto"
-                value = "https"
-              }
-              http_header {
-                name  = "Host"
-                value = var.hostname
-              }
-            }
-          }
-          liveness_probe {
-            http_get {
-              path = "/health/live/"
-              port = 8000
-              http_header {
-                name  = "X-Forwarded-Proto"
-                value = "https"
-              }
-              http_header {
-                name  = "Host"
-                value = var.hostname
-              }
-            }
-          }
-          resources {
-            requests = var.resource_requests
-            limits   = var.resource_limits
-          }
-          security_context {
-            allow_privilege_escalation = false
-            run_as_non_root            = true
-            run_as_user                = 1000
-            capabilities { drop = ["ALL"] }
-          }
-        }
-      }
-    }
-  }
+
+removed {
+  from = kubernetes_deployment_v1.app
+  lifecycle { destroy = false }
 }
+
 resource "kubernetes_service_v1" "app" {
   metadata {
     name      = "higayon"

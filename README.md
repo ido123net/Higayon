@@ -117,10 +117,15 @@ kubectl -n higayon rollout status statefulset/higayon-postgres --timeout=300s
 kubectl -n higayon create secret generic higayon-runtime --from-env-file=/secure/path/runtime.env
 ```
 
-Two equivalent deployment paths:
-
-* **Terraform**: `cd infra/terraform`; `terraform init`; copy `example.tfvars` to a local ignored `.tfvars`, then set the image, namespace, hostname, kubeconfig/context, ingress class (`traefik` here), TLS issuer, runtime secret reference and resources. If the namespace already exists, import it with `terraform import kubernetes_namespace_v1.app higayon`. Review `terraform plan -var-file=local.tfvars` before applying. The migration Job must complete before the Deployment changes. No secret values are passed to Terraform or read into its state. Change `release` for each image rollout and preserve its completed Job until the next release.
-* **Plain manifests**: customize `infra/kubernetes/app.yaml` (all placeholders, namespace, resources, config and image in both Job and Deployment). The Ingress annotation selects the configured cert-manager ClusterIssuer and requests the named TLS Secret automatically. Use the staging issuer while testing, then switch to production after DNS and HTTP-01 validation work.
+Terraform manages the Higayon namespace, configuration, Services, Ingress and
+monitoring dashboards. Set the cluster connection, hostname, ingress class,
+TLS issuer and allowed emails in an ignored tfvars file. Import the namespace
+if it already exists. The Kubernetes Deployment and migration Jobs are
+application release resources. For a new installation, customize
+`infra/kubernetes/app.yaml` for the target cluster. Run its migration Job and
+wait for success before applying the Deployment. Choose one owner for the
+shared resources before applying the ConfigMap, Services or Ingress from the
+plain manifest. GitHub promotions update an existing Deployment.
 
 Readiness checks database availability, liveness checks the process. WhiteNoise serves collected assets. Migrations use the same external PostgreSQL connection and image as the application; replicas never run migrations on startup. For secret rotation, update the existing Secret outside Terraform, then `kubectl -n higayon rollout restart deployment/higayon`.
 
@@ -170,3 +175,61 @@ Terraform supplies the Usage and Health dashboards from `monitoring/dashboards`.
 The personal infrastructure repository installs Prometheus and Grafana in the
 application namespace. Set `live_solving=false` to serve the polling browser
 during rollout or rollback. Existing open tabs continue to use the versioned API.
+
+## CI and production releases
+
+GitHub Actions runs the locked Python checks, SQLite and PostgreSQL suites, browser
+and Node tests, Terraform validation, and a container build on pull requests and
+main. A successful main push publishes an amd64 image to GHCR and stores its
+commit and immutable digest in the `release-metadata` workflow artifact for 90
+days. Configure the GHCR package as private and grant the repository permission
+to publish it. To promote an older image, retain the corresponding successful
+workflow run and artifact. Re-run the build if its metadata has expired.
+
+Production releases use the manually dispatched **Promote production** workflow
+on `main`. Enter a successful **CI and image** main-branch workflow run ID. The
+workflow verifies the recorded commit and digest and serializes deployments.
+A GitHub-hosted runner uses AWS OIDC and the Systems Manager session document
+`Higayon-K3sTunnel` to reach the K3s API on port 6443 through local port 6445.
+
+### Configure production access
+
+- Restrict the GitHub `production` environment to `main`. The AWS deployment
+  role trusts that environment. Its Session Manager policy grants access to
+  the production instance and the fixed-port tunnel document.
+- Apply `kubectl apply -f infra/kubernetes/github-deploy.yaml` as an operator.
+  Store a token for the `higayon-github-deploy` service account as
+  `HIGAYON_KUBE_TOKEN` in the GitHub `production` environment. Set
+  `HIGAYON_KUBE_CA_DATA` to the base64 `certificate-authority-data` from the
+  production kubeconfig. Use `kubectl -n higayon create token
+  higayon-github-deploy --duration=24h` to issue a token and refresh the
+  environment secret before its actual expiration. The API server can cap the
+  requested lifetime. A fresh token can be used for each manual promotion.
+- Create a docker-registry Secret named `higayon-ghcr` in the `higayon`
+  namespace with a classic GitHub token with `read:packages` and read access to
+  the private package. Store the token directly in the cluster Secret. Rotate
+  it by updating the Secret and testing a new image pull.
+
+### Hand off the existing Deployment
+
+For an installation where Terraform previously owned the app Deployment and
+migration Job, take a protected backup of the Terraform state, then review a
+plan using the existing production tfvars. Remove obsolete values for image,
+release, resources, replicas, runtime secret name, image pull secret name and
+live solving from the tfvars. Those values now belong to the Kubernetes pod
+configuration. The two `removed` blocks should show Terraform relinquishing
+ownership without deleting either live object. Apply that reviewed handoff
+before the first promotion. Keep Terraform state in the existing operator
+environment.
+
+### Release failure and rollback
+
+The workflow creates a migration Job from the live app container configuration,
+using the requested image digest and the private registry credentials. The app
+image changes only after the Job succeeds. If a migration fails, inspect its
+logs in Actions or via `kubectl -n higayon logs job/JOB`. Fix the issue and
+trigger another promotion. Migration Jobs are retained for 24 hours.
+
+If the new app fails to become ready, inspect the Deployment and pod events.
+Promote an earlier successful run with retained image metadata to revert the
+app version. Application rollback does not reverse database migrations.

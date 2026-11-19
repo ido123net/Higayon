@@ -13,10 +13,6 @@ variable "namespace" {
   default = "higayon"
 }
 
-variable "image" {
-  type = string
-}
-
 variable "hostname" {
   type = string
 }
@@ -27,11 +23,6 @@ variable "owner_email" {
 
 variable "allowed_emails" {
   type = list(string)
-}
-
-variable "runtime_secret_name" {
-  type    = string
-  default = "higayon-runtime"
 }
 
 variable "tls_secret_name" {
@@ -57,30 +48,4 @@ variable "ingress_class" {
 variable "ingress_enabled" {
   type    = bool
   default = true
-}
-
-variable "replicas" {
-  type    = number
-  default = 1
-}
-
-variable "release" {
-  type    = string
-  default = "v1"
-}
-
-variable "resource_requests" {
-  type    = map(string)
-  default = { cpu = "100m", memory = "128Mi" }
-}
-
-variable "resource_limits" {
-  type    = map(string)
-  default = { cpu = "1", memory = "512Mi" }
-}
-
-variable "live_solving" {
-  type        = bool
-  default     = false
-  description = "Enable the event-driven browser after checking the ASGI stream through ingress."
 }
