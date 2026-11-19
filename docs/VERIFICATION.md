@@ -64,3 +64,24 @@ The local development server remains available separately at 127.0.0.1:8765.
   this change; browser contexts use verified Google-backed test users.
 - This feature adds an additive migration and changes application assets. The
   deployment must complete its migration job before rolling out the new app.
+
+## Live solving and dashboards · 2026-11-19
+
+Playwright used independent registered and guest sessions. With two ASGI processes
+on PostgreSQL, a crossing completion propagated in 0.43 s and its withdrawal in
+0.39 s. With one process on SQLite the times were 0.32 s and 0.28 s. The tests
+checked no state reads over an idle polling interval, private partial letters,
+atomic crossing changes, offline reload/retry, edits during a POST, duplicate
+tabs, keyboard roster access, and revoked membership. Killing the PostgreSQL-backed
+app process exercised lease expiry and automatic recovery after restart.
+
+The production check opened two guest browsers through the existing HTTPS
+Traefik ingress. A completion propagated in 0.70 s and its withdrawal in 0.81 s.
+Prometheus recorded one completion, one revision, one withdrawal, two guest
+joins, two connected memberships and 16 simultaneous event streams. Both gauges
+returned to zero after the browsers closed. During the test the node had 2,025
+MiB of available memory and 29 GiB of free disk. All 12 dashboard queries
+evaluated successfully. Test group data was removed after verification.
+
+The owner verified Google access through the private Grafana preview. Public
+Grafana ingress and DNS publication await a real second-account denial check.

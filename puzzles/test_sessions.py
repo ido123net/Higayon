@@ -2,7 +2,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
-from django.db import connections
+from django.db import connections, transaction
 from django.test import (
     Client,
     TestCase,
@@ -10,6 +10,7 @@ from django.test import (
     override_settings,
     skipUnlessDBFeature,
 )
+from prometheus_client import REGISTRY
 
 from .domain import save_puzzle
 from .models import AuthorizedEmail, ConfirmedAnswer, SessionMember, SolvingSession
@@ -49,6 +50,38 @@ class SessionTests(TestCase):
             },
             client,
         )
+
+    def test_usage_metrics_count_only_committed_new_activity(self):
+        def totals():
+            return [
+                REGISTRY.get_sample_value(name, labels) or 0
+                for name, labels in (
+                    ("higayon_groups_total", {}),
+                    ("higayon_joins_total", {"kind": "registered"}),
+                    ("higayon_joins_total", {"kind": "guest"}),
+                    ("higayon_clue_edits_total", {"action": "completion"}),
+                    ("higayon_clue_edits_total", {"action": "revision"}),
+                    ("higayon_clue_edits_total", {"action": "withdrawal"}),
+                )
+            ]
+
+        before = totals()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.post("/api/v1/sessions/", {"puzzle_id": str(self.puzzle.id)})
+            guest = Client()
+            guest.post(self.join_url, {"name": "נועה"})
+            guest.post(self.join_url, {"name": "נועה"})
+            self.client.force_login(self.friend)
+            self.client.post(self.join_url)
+            self.client.post(self.join_url)
+            self.submit()
+            self.submit("חבגדהוז", 1)
+            self.submit(None, 2)
+            with transaction.atomic():
+                self.submit("טבגדהוז", 3)
+                transaction.set_rollback(True)
+            self.assertEqual(totals(), before)
+        self.assertEqual([a - b for a, b in zip(totals(), before, strict=True)], [1, 2, 1, 1, 1, 1])
 
     def test_explicit_join_and_membership_isolation(self):
         self.client.force_login(self.friend)
