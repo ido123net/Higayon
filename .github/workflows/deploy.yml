@@ -3,18 +3,22 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: Successful CI and image workflow run ID
+        description: Successful release build run ID for a manual promotion or rollback
         required: true
         type: string
+  workflow_run:
+    workflows: [Release image]
+    types: [completed]
 permissions:
   contents: read
   actions: read
-concurrency:
-  group: higayon-production
-  cancel-in-progress: false
 jobs:
   verify:
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.verify.outputs.image }}
@@ -23,7 +27,7 @@ jobs:
         id: run
         uses: actions/github-script@v7
         env:
-          RUN_ID: ${{ inputs.run_id }}
+          RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
         with:
           script: |
             if (!/^[0-9]+$/.test(process.env.RUN_ID)) throw new Error('Invalid run ID');
@@ -33,29 +37,61 @@ jobs:
             const {data: workflow} = await github.rest.actions.getWorkflow({
               ...context.repo, workflow_id: run.workflow_id
             });
-            if (workflow.path !== '.github/workflows/ci.yml' || run.event !== 'push' ||
-                run.head_branch !== 'main' || run.status !== 'completed' ||
-                run.conclusion !== 'success') throw new Error('Run is not a successful main build');
+            const repository = `${context.repo.owner}/${context.repo.repo}`.toLowerCase();
+            const taggedRelease = workflow.path === '.github/workflows/release.yml';
+            const legacyRelease = context.eventName === 'workflow_dispatch' &&
+              workflow.path === '.github/workflows/ci.yml' && run.head_branch === 'main';
+            if ((!taggedRelease && !legacyRelease) || run.event !== 'push' ||
+                run.head_repository?.full_name.toLowerCase() !== repository ||
+                run.status !== 'completed' || run.conclusion !== 'success') {
+              throw new Error('Run is not a successful release build from this repository');
+            }
+            core.setOutput('run_id', String(run.id));
             core.setOutput('sha', run.head_sha);
+            core.setOutput('tagged', String(taggedRelease));
       - uses: actions/download-artifact@v4
         with:
           name: release-metadata
-          run-id: ${{ inputs.run_id }}
+          run-id: ${{ steps.run.outputs.run_id }}
           github-token: ${{ github.token }}
       - name: Validate release metadata
         id: verify
+        uses: actions/github-script@v7
         env:
           EXPECTED_COMMIT: ${{ steps.run.outputs.sha }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          expected="ghcr.io/${REPOSITORY,,}"
-          jq -e --arg image "$expected" --arg commit "$EXPECTED_COMMIT" \
-            '.image == $image and .commit == $commit and (.digest | test("^sha256:[0-9a-f]{64}$"))' \
-            release.json > /dev/null
-          echo "image=$expected@$(jq -r .digest release.json)" >> "$GITHUB_OUTPUT"
+          TAGGED_RELEASE: ${{ steps.run.outputs.tagged }}
+        with:
+          script: |
+            const release = JSON.parse(require('node:fs').readFileSync('release.json', 'utf8'));
+            const image = `ghcr.io/${context.repo.owner}/${context.repo.repo}`.toLowerCase();
+            if (release.image !== image || release.commit !== process.env.EXPECTED_COMMIT ||
+                !/^[a-f0-9]{40}$/.test(release.commit) ||
+                typeof release.digest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(release.digest)) {
+              throw new Error('Invalid release image, commit or digest');
+            }
+            if (process.env.TAGGED_RELEASE === 'true') {
+              if (typeof release.tag !== 'string' || !/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(release.tag)) {
+                throw new Error('Invalid release tag in metadata');
+              }
+              const {data: tagged} = await github.rest.repos.getCommit({
+                ...context.repo, ref: `tags/${release.tag}`
+              });
+              if (tagged.sha !== release.commit) {
+                throw new Error('Release tag no longer points to the built commit');
+              }
+              const {data: comparison} = await github.rest.repos.compareCommitsWithBasehead({
+                ...context.repo, basehead: `${release.commit}...main`
+              });
+              if (!['identical', 'ahead'].includes(comparison.status)) {
+                throw new Error('Release commit is outside the history of main');
+              }
+            }
+            core.setOutput('image', `${image}@${release.digest}`);
   deploy:
     needs: verify
+    concurrency:
+      group: higayon-production
+      cancel-in-progress: false
     runs-on: ubuntu-24.04
     environment: production
     timeout-minutes: 25

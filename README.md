@@ -180,18 +180,40 @@ during rollout or rollback. Existing open tabs continue to use the versioned API
 
 GitHub Actions scans Git history for secrets and runs the locked Python checks,
 SQLite and PostgreSQL suites, browser and Node tests, Terraform validation, and
-a container build on pull requests and main. A successful main push publishes
-a public amd64 image to GHCR and stores its commit and immutable digest in the
-`release-metadata` workflow artifact for 90 days. The build context contains
-only the application files and dependency manifests. Supply production values
-through the Kubernetes runtime Secret at deployment. To promote an older
-image, retain the corresponding successful workflow run and artifact.
+a container build on pull requests, main and version releases. To release,
+bump the project version with uv. Commit both version files and land the
+change on `main`.
 
-Production releases use the manually dispatched **Promote production** workflow
-on `main`. Enter a successful **CI and image** main-branch workflow run ID. The
-workflow verifies the recorded commit and digest and serializes deployments.
-A GitHub-hosted runner uses AWS OIDC and the Systems Manager session document
-`Higayon-K3sTunnel` to reach the K3s API on port 6443 through local port 6445.
+```sh
+uv version --bump patch
+git add pyproject.toml uv.lock
+git commit -m "Bump Higayon version"
+```
+
+After merging the version bump, tag the merged commit and push the tag.
+
+```sh
+git switch main
+git pull --ff-only origin main
+tag="v$(uv version --short)"
+git tag "$tag"
+git push origin "refs/tags/$tag"
+```
+
+Production tags use the stable SemVer form `vMAJOR.MINOR.PATCH` and must match
+the version in `pyproject.toml`. The tag triggers **Release image**. After validation and CI,
+the workflow publishes a public amd64 image to GHCR and stores the tag,
+commit and immutable digest in the `release-metadata` artifact for 90 days.
+The build context contains only app files and dependency manifests. Supply
+production values through the Kubernetes runtime Secret at deployment.
+
+A successful tagged build triggers **Promote production** automatically.
+The workflow verifies the recorded release and digest, then serializes deployments.
+An ordinary push to `main` runs checks. For a retry or rollback, manually
+dispatch **Promote production** on `main` with a successful build run ID that
+still has its release metadata. A GitHub-hosted runner uses AWS OIDC and the
+Systems Manager session document `Higayon-K3sTunnel` to reach the K3s API on
+port 6443 through local port 6445.
 
 ### Configure production access
 
@@ -205,7 +227,9 @@ A GitHub-hosted runner uses AWS OIDC and the Systems Manager session document
   production kubeconfig. Use `kubectl -n higayon create token
   higayon-github-deploy --duration=24h` to issue a token and refresh the
   environment secret before its actual expiration. The API server can cap the
-  requested lifetime. A fresh token can be used for each manual promotion.
+  requested lifetime. Refresh the token before pushing a release tag if it
+  has expired. A failed promotion can be retried with the same build run ID
+  after refreshing the token.
 - The public package allows anonymous image pulls. The first promotion with
   this setup removes the old `higayon-ghcr` reference. Once it succeeds and
   the old pods are gone, revoke the old classic token and remove the unused

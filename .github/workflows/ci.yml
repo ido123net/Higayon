@@ -1,6 +1,7 @@
-name: CI and image
+name: CI
 on:
   pull_request:
+  workflow_call:
   push:
     branches: [main]
 permissions:
@@ -59,40 +60,3 @@ jobs:
       - run: terraform -chdir=infra/terraform init -backend=false -lockfile=readonly
       - run: terraform -chdir=infra/terraform validate
       - run: docker build --tag higayon:ci .
-  publish:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: checks
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - id: image
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-      - id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          platforms: linux/amd64
-          tags: ${{ steps.image.outputs.name }}:${{ github.sha }}
-      - name: Save release metadata
-        env:
-          IMAGE: ${{ steps.image.outputs.name }}
-          DIGEST: ${{ steps.build.outputs.digest }}
-          COMMIT: ${{ github.sha }}
-        run: |
-          jq -n '{image: env.IMAGE, digest: env.DIGEST, commit: env.COMMIT}' > release.json
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-metadata
-          path: release.json
-          retention-days: 90
